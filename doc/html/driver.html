@@ -36,7 +36,7 @@
               href="genindex.html"/>
         <link rel="search" title="Search" href="search.html"/>
     <link rel="top" title="MIOpen: AMD&#39;s deep learning library" href="index.html"/>
-        <link rel="next" title="Kernel Cache" href="cache.html"/>
+        <link rel="next" title="Debugging and Logging" href="DebugAndLogging.html"/>
         <link rel="prev" title="MIOpen" href="install.html"/> 
 
   
@@ -66,7 +66,7 @@
             
             
               <div class="version">
-                1.5.0
+                1.7.1
               </div>
             
           
@@ -93,6 +93,10 @@
               <p class="caption"><span class="caption-text">Contents:</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="releasenotes.html">MIOpen Release notes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">02/06/2019 [ 1.7.1 ]</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">12/19/2018 [ 1.7.0 ]</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">11/18/2018 [ 1.6.0 ]</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">09/14/2018 [ 1.5.0 ]</a></li>
 <li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">07/30/2018 [ 1.4.2 ]</a></li>
 <li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">07/19/2018 [ 1.4.1 ]</a></li>
 <li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">07/06/2018 [ 1.4.0 ]</a></li>
@@ -113,7 +117,11 @@
 <li class="toctree-l2"><a class="reference internal" href="install.html#configuring-with-cmake">Configuring with cmake</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="install.html#for-opencl-run">For OpenCL, run:</a></li>
 <li class="toctree-l3"><a class="reference internal" href="install.html#for-hip-run">For HIP, run:</a></li>
-<li class="toctree-l3"><a class="reference internal" href="install.html#setting-up-locations">Setting up locations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="install.html#setting-up-locations">Setting Up Locations</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="install.html#system-performance-database-and-user-database">System Performance Database and User Database</a></li>
+<li class="toctree-l4"><a class="reference internal" href="install.html#persistent-program-cache">Persistent Program Cache</a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="install.html#changing-the-cmake-configuration">Changing the cmake configuration</a></li>
 </ul>
 </li>
@@ -127,15 +135,24 @@
 </ul>
 </li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">MIOpenDriver</a></li>
+<li class="toctree-l1"><a class="reference internal" href="DebugAndLogging.html">Debugging and Logging</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#logging">Logging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#log-levels">Log Levels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#layer-filtering">Layer Filtering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#rocblas-logging-and-behavior">rocBlas Logging and Behavior</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="cache.html">Kernel Cache</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="cache.html#clear-the-cache">Clear the cache</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cache.html#disabling-the-cache">Disabling the cache</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cache.html#updating-miopen-and-removing-the-cache">Updating MIOpen and removing the cache</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="perfdatabase.html">Performance Database</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="perfdatabase.html#auto-tuning-the-kernels">Auto-tuning the kernels.</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="perfdatabase.html#miopen-find-enforce">MIOPEN_FIND_ENFORCE</a></li>
 <li class="toctree-l3"><a class="reference internal" href="perfdatabase.html#miopen-find-enforce-scope">MIOPEN_FIND_ENFORCE_SCOPE</a></li>
+<li class="toctree-l3"><a class="reference internal" href="perfdatabase.html#updating-miopen-and-the-user-db">Updating MIOpen and the User Db</a></li>
 </ul>
 </li>
 </ul>
@@ -147,12 +164,17 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#create-a-fusion-plan">Create a Fusion Plan</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#create-and-add-operators">Create and add Operators</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#a-name-compile-fusion-a-compile-the-fusion-plan"><a name="compile_fusion"></a>Compile the Fusion Plan</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#compile-the-fusion-plan">Compile the Fusion Plan</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#set-the-runtime-arguments">Set the runtime arguments</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#execute-a-fusion-plan">Execute a Fusion Plan</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#cleanup">Cleanup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#a-name-supported-fusions-a-supported-fusions"><a name="supported_fusions"></a> Supported Fusions</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#a-name-supported-fusions-a-performance-comparison-to-non-fused-kernels"><a name="supported_fusions"></a> Performance Comparison to Non-Fused Kernels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#supported-fusions">Supported Fusions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="Getting_Started_FusionAPI.html#convolution-based-fp32-fusion-for-inference">Convolution based FP32 Fusion for Inference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Getting_Started_FusionAPI.html#convolution-based-fp16-fusion-for-inference">Convolution based FP16 Fusion for Inference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Getting_Started_FusionAPI.html#batch-normalization-based-fusion-for-fp32-and-fp16-for-inference-and-training">Batch Normalization based fusion for FP32 and FP16 for Inference and Training</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#performance-comparison-to-non-fused-kernels">Performance Comparison to Non-Fused Kernels</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="apireference.html">API Reference</a><ul>
@@ -422,7 +444,7 @@ MIOpenDriver can be build by typing:</p>
   
     <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
       
-        <a href="cache.html" class="btn btn-neutral float-right" title="Kernel Cache" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+        <a href="DebugAndLogging.html" class="btn btn-neutral float-right" title="Debugging and Logging" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
       
       
         <a href="install.html" class="btn btn-neutral" title="MIOpen" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
@@ -456,7 +478,7 @@ MIOpenDriver can be build by typing:</p>
     <script type="text/javascript">
         var DOCUMENTATION_OPTIONS = {
             URL_ROOT:'./',
-            VERSION:'1.5.0',
+            VERSION:'1.7.1',
             COLLAPSE_INDEX:false,
             FILE_SUFFIX:'.html',
             HAS_SOURCE:  true,

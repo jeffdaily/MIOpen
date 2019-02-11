@@ -67,7 +67,7 @@
             
             
               <div class="version">
-                1.5.0
+                1.7.1
               </div>
             
           
@@ -94,6 +94,10 @@
               <p class="caption"><span class="caption-text">Contents:</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="releasenotes.html">MIOpen Release notes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">02/06/2019 [ 1.7.1 ]</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">12/19/2018 [ 1.7.0 ]</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">11/18/2018 [ 1.6.0 ]</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">09/14/2018 [ 1.5.0 ]</a></li>
 <li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">07/30/2018 [ 1.4.2 ]</a></li>
 <li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">07/19/2018 [ 1.4.1 ]</a></li>
 <li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">07/06/2018 [ 1.4.0 ]</a></li>
@@ -114,7 +118,11 @@
 <li class="toctree-l2"><a class="reference internal" href="install.html#configuring-with-cmake">Configuring with cmake</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="install.html#for-opencl-run">For OpenCL, run:</a></li>
 <li class="toctree-l3"><a class="reference internal" href="install.html#for-hip-run">For HIP, run:</a></li>
-<li class="toctree-l3"><a class="reference internal" href="install.html#setting-up-locations">Setting up locations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="install.html#setting-up-locations">Setting Up Locations</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="install.html#system-performance-database-and-user-database">System Performance Database and User Database</a></li>
+<li class="toctree-l4"><a class="reference internal" href="install.html#persistent-program-cache">Persistent Program Cache</a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="install.html#changing-the-cmake-configuration">Changing the cmake configuration</a></li>
 </ul>
 </li>
@@ -128,15 +136,24 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="driver.html">MIOpenDriver</a></li>
+<li class="toctree-l1"><a class="reference internal" href="DebugAndLogging.html">Debugging and Logging</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#logging">Logging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#log-levels">Log Levels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#layer-filtering">Layer Filtering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#rocblas-logging-and-behavior">rocBlas Logging and Behavior</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="cache.html">Kernel Cache</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="cache.html#clear-the-cache">Clear the cache</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cache.html#disabling-the-cache">Disabling the cache</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cache.html#updating-miopen-and-removing-the-cache">Updating MIOpen and removing the cache</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="perfdatabase.html">Performance Database</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="perfdatabase.html#auto-tuning-the-kernels">Auto-tuning the kernels.</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="perfdatabase.html#miopen-find-enforce">MIOPEN_FIND_ENFORCE</a></li>
 <li class="toctree-l3"><a class="reference internal" href="perfdatabase.html#miopen-find-enforce-scope">MIOPEN_FIND_ENFORCE_SCOPE</a></li>
+<li class="toctree-l3"><a class="reference internal" href="perfdatabase.html#updating-miopen-and-the-user-db">Updating MIOpen and the User Db</a></li>
 </ul>
 </li>
 </ul>
@@ -148,12 +165,17 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#create-a-fusion-plan">Create a Fusion Plan</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#create-and-add-operators">Create and add Operators</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#a-name-compile-fusion-a-compile-the-fusion-plan"><a name="compile_fusion"></a>Compile the Fusion Plan</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#compile-the-fusion-plan">Compile the Fusion Plan</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#set-the-runtime-arguments">Set the runtime arguments</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#execute-a-fusion-plan">Execute a Fusion Plan</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#cleanup">Cleanup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#a-name-supported-fusions-a-supported-fusions"><a name="supported_fusions"></a> Supported Fusions</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#a-name-supported-fusions-a-performance-comparison-to-non-fused-kernels"><a name="supported_fusions"></a> Performance Comparison to Non-Fused Kernels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#supported-fusions">Supported Fusions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="Getting_Started_FusionAPI.html#convolution-based-fp32-fusion-for-inference">Convolution based FP32 Fusion for Inference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Getting_Started_FusionAPI.html#convolution-based-fp16-fusion-for-inference">Convolution based FP16 Fusion for Inference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Getting_Started_FusionAPI.html#batch-normalization-based-fusion-for-fp32-and-fp16-for-inference-and-training">Batch Normalization based fusion for FP32 and FP16 for Inference and Training</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#performance-comparison-to-non-fused-kernels">Performance Comparison to Non-Fused Kernels</a></li>
 </ul>
 </li>
 <li class="toctree-l1 current"><a class="reference internal" href="apireference.html">API Reference</a><ul class="current">
@@ -511,7 +533,7 @@
 <dt id="_CPPv320miopenConvAlgoPerf_t">
 <span id="_CPPv220miopenConvAlgoPerf_t"></span><span id="miopenConvAlgoPerf_t"></span><span class="target" id="structmiopenConvAlgoPerf__t"></span><em class="property">struct </em><code class="descname">miopenConvAlgoPerf_t</code><a class="headerlink" href="#_CPPv320miopenConvAlgoPerf_t" title="Permalink to this definition">¶</a><br /></dt>
 <dd><p>Perf struct for forward, backward filter, or backward data algorithms. </p>
-<p>Contains the union to hold the selected convolution algorithm for forward, or backwards layers. Also contains the time it took to run the algorithm and the workspace required to run the algorithm. </p>
+<p>Contains the union to hold the selected convolution algorithm for forward, or backwards layers, and also contains the time it took to run the algorithm and the workspace required to run the algorithm. The workspace in this structure can be used when executing the convolution layer. </p>
 </dd></dl>
 
 </div>
@@ -641,7 +663,7 @@
 <dt id="_CPPv340miopenConvolutionForwardGetWorkSpaceSize14miopenHandle_tK24miopenTensorDescriptor_tK24miopenTensorDescriptor_tK29miopenConvolutionDescriptor_tK24miopenTensorDescriptor_tP6size_t">
 <span id="_CPPv240miopenConvolutionForwardGetWorkSpaceSize14miopenHandle_tK24miopenTensorDescriptor_tK24miopenTensorDescriptor_tK29miopenConvolutionDescriptor_tK24miopenTensorDescriptor_tP6size_t"></span><span id="miopenConvolutionForwardGetWorkSpaceSize__miopenHandle_t.miopenTensorDescriptor_tC.miopenTensorDescriptor_tC.miopenConvolutionDescriptor_tC.miopenTensorDescriptor_tC.sP"></span><span class="target" id="group__convolutions_1ga0e0db6c9c7d58dceaa2e38627bc8bca6"></span> <a class="reference internal" href="handle.html#_CPPv314miopenStatus_t" title="miopenStatus_t">miopenStatus_t</a> <code class="descname">miopenConvolutionForwardGetWorkSpaceSize</code><span class="sig-paren">(</span>miopenHandle_t <em>handle</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>wDesc</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>xDesc</em>, <em class="property">const</em> miopenConvolutionDescriptor_t <em>convDesc</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>yDesc</em>, size_t *<em>workSpaceSize</em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv340miopenConvolutionForwardGetWorkSpaceSize14miopenHandle_tK24miopenTensorDescriptor_tK24miopenTensorDescriptor_tK29miopenConvolutionDescriptor_tK24miopenTensorDescriptor_tP6size_t" title="Permalink to this definition">¶</a><br /></dt>
 <dd><p>Query the workspace size required for a forward convolution layer. </p>
-<p>This call is required and must be executed before running the findConvolution and before executing convolution layer functions. The maximum size of the memory needed from the set of potential forward convolution algorithms is returned.</p>
+<p>This call is required and must be executed once before running <a class="reference internal" href="#group__convolutions_1ga6ce2584d8111f2d2d22d72d6589261a7"><span class="std std-ref">miopenFindConvolutionForwardAlgorithm()</span></a> in order to determine the largest required allocation for the algorithm search; i.e., the maximum size of the memory needed from the set of potential forward convolution algorithm is returned.</p>
 <p>If using Group/Depthwise convolution mode, call <a class="reference internal" href="#group__convolutions_1gad385d154146d67a4d9abc198c212c53b"><span class="std std-ref">miopenSetConvolutionGroupCount()</span></a> before running this.</p>
 <p><dl class="docutils">
 <dt><strong>Return</strong></dt>
@@ -707,7 +729,7 @@
 <dt id="_CPPv324miopenConvolutionForward14miopenHandle_tPKvK24miopenTensorDescriptor_tPKvK24miopenTensorDescriptor_tPKvK29miopenConvolutionDescriptor_t24miopenConvFwdAlgorithm_tPKvK24miopenTensorDescriptor_tPvPv6size_t">
 <span id="_CPPv224miopenConvolutionForward14miopenHandle_tPKvK24miopenTensorDescriptor_tPKvK24miopenTensorDescriptor_tPKvK29miopenConvolutionDescriptor_t24miopenConvFwdAlgorithm_tPKvK24miopenTensorDescriptor_tPvPv6size_t"></span><span id="miopenConvolutionForward__miopenHandle_t.voidCP.miopenTensorDescriptor_tC.voidCP.miopenTensorDescriptor_tC.voidCP.miopenConvolutionDescriptor_tC.miopenConvFwdAlgorithm_t.voidCP.miopenTensorDescriptor_tC.voidP.voidP.s"></span><span class="target" id="group__convolutions_1ga9920de268dbee3a383d017283bf06a51"></span> <a class="reference internal" href="handle.html#_CPPv314miopenStatus_t" title="miopenStatus_t">miopenStatus_t</a> <code class="descname">miopenConvolutionForward</code><span class="sig-paren">(</span>miopenHandle_t <em>handle</em>, <em class="property">const</em> void *<em>alpha</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>xDesc</em>, <em class="property">const</em> void *<em>x</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>wDesc</em>, <em class="property">const</em> void *<em>w</em>, <em class="property">const</em> miopenConvolutionDescriptor_t <em>convDesc</em>, <a class="reference internal" href="#_CPPv324miopenConvFwdAlgorithm_t" title="miopenConvFwdAlgorithm_t">miopenConvFwdAlgorithm_t</a> <em>algo</em>, <em class="property">const</em> void *<em>beta</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>yDesc</em>, void *<em>y</em>, void *<em>workSpace</em>, size_t <em>workSpaceSize</em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv324miopenConvolutionForward14miopenHandle_tPKvK24miopenTensorDescriptor_tPKvK24miopenTensorDescriptor_tPKvK29miopenConvolutionDescriptor_t24miopenConvFwdAlgorithm_tPKvK24miopenTensorDescriptor_tPvPv6size_t" title="Permalink to this definition">¶</a><br /></dt>
 <dd><p>Execute a forward convolution layer. </p>
-<p>Runs the forward convolution layer based on the selected algorithm. The functions <a class="reference internal" href="#group__convolutions_1ga0e0db6c9c7d58dceaa2e38627bc8bca6"><span class="std std-ref">miopenConvolutionForwardGetWorkSpaceSize()</span></a> and <a class="reference internal" href="#group__convolutions_1ga6ce2584d8111f2d2d22d72d6589261a7"><span class="std std-ref">miopenFindConvolutionForwardAlgorithm()</span></a> must have been executed previously to determine the required memory needed for the workspace and the best convolutional algorithm, respectively.</p>
+<p>Runs the forward convolution layer based on the selected algorithm. The function <a class="reference internal" href="#group__convolutions_1ga6ce2584d8111f2d2d22d72d6589261a7"><span class="std std-ref">miopenFindConvolutionForwardAlgorithm()</span></a> must have been executed previously to determine the required memory needed for the workspace and the best convolutional algorithm.</p>
 <p>If using Group/Depthwise convolution mode, call <a class="reference internal" href="#group__convolutions_1gad385d154146d67a4d9abc198c212c53b"><span class="std std-ref">miopenSetConvolutionGroupCount()</span></a> before running this.</p>
 <p><dl class="docutils">
 <dt><strong>Return</strong></dt>
@@ -806,7 +828,7 @@
 <dt id="_CPPv329miopenConvolutionBackwardData14miopenHandle_tPKvK24miopenTensorDescriptor_tPKvK24miopenTensorDescriptor_tPKvK29miopenConvolutionDescriptor_t28miopenConvBwdDataAlgorithm_tPKvK24miopenTensorDescriptor_tPvPv6size_t">
 <span id="_CPPv229miopenConvolutionBackwardData14miopenHandle_tPKvK24miopenTensorDescriptor_tPKvK24miopenTensorDescriptor_tPKvK29miopenConvolutionDescriptor_t28miopenConvBwdDataAlgorithm_tPKvK24miopenTensorDescriptor_tPvPv6size_t"></span><span id="miopenConvolutionBackwardData__miopenHandle_t.voidCP.miopenTensorDescriptor_tC.voidCP.miopenTensorDescriptor_tC.voidCP.miopenConvolutionDescriptor_tC.miopenConvBwdDataAlgorithm_t.voidCP.miopenTensorDescriptor_tC.voidP.voidP.s"></span><span class="target" id="group__convolutions_1gab35ac8cb87c64d1ab7feaa983e6e3c6d"></span> <a class="reference internal" href="handle.html#_CPPv314miopenStatus_t" title="miopenStatus_t">miopenStatus_t</a> <code class="descname">miopenConvolutionBackwardData</code><span class="sig-paren">(</span>miopenHandle_t <em>handle</em>, <em class="property">const</em> void *<em>alpha</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>dyDesc</em>, <em class="property">const</em> void *<em>dy</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>wDesc</em>, <em class="property">const</em> void *<em>w</em>, <em class="property">const</em> miopenConvolutionDescriptor_t <em>convDesc</em>, <a class="reference internal" href="#_CPPv328miopenConvBwdDataAlgorithm_t" title="miopenConvBwdDataAlgorithm_t">miopenConvBwdDataAlgorithm_t</a> <em>algo</em>, <em class="property">const</em> void *<em>beta</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>dxDesc</em>, void *<em>dx</em>, void *<em>workSpace</em>, size_t <em>workSpaceSize</em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv329miopenConvolutionBackwardData14miopenHandle_tPKvK24miopenTensorDescriptor_tPKvK24miopenTensorDescriptor_tPKvK29miopenConvolutionDescriptor_t28miopenConvBwdDataAlgorithm_tPKvK24miopenTensorDescriptor_tPvPv6size_t" title="Permalink to this definition">¶</a><br /></dt>
 <dd><p>Execute a backward data convolution layer. </p>
-<p>Runs the backward data convolution layer based on the selected algorithm. The function <a class="reference internal" href="#group__convolutions_1ga721816db33ff631a249c730c4fc10044"><span class="std std-ref">miopenConvolutionBackwardDataGetWorkSpaceSize()</span></a> and <a class="reference internal" href="#group__convolutions_1gac3cfda992eb4e8f10369c32985ce05ff"><span class="std std-ref">miopenFindConvolutionBackwardDataAlgorithm()</span></a> must have been executed previously to determine the required memory needed for the workspace and the best convolutional algorithm, respectively.</p>
+<p>Runs the backward data convolution layer based on the selected algorithm. The function <a class="reference internal" href="#group__convolutions_1gac3cfda992eb4e8f10369c32985ce05ff"><span class="std std-ref">miopenFindConvolutionBackwardDataAlgorithm()</span></a> must have been executed previously to determine the required memory needed for the workspace and the best convolutional algorithm.</p>
 <p>If using Group/Depthwise convolution mode, call <a class="reference internal" href="#group__convolutions_1gad385d154146d67a4d9abc198c212c53b"><span class="std std-ref">miopenSetConvolutionGroupCount()</span></a> before running this.</p>
 <p><dl class="docutils">
 <dt><strong>Return</strong></dt>
@@ -839,7 +861,7 @@
 <dt id="_CPPv345miopenConvolutionBackwardDataGetWorkSpaceSize14miopenHandle_tK24miopenTensorDescriptor_tK24miopenTensorDescriptor_tK29miopenConvolutionDescriptor_tK24miopenTensorDescriptor_tP6size_t">
 <span id="_CPPv245miopenConvolutionBackwardDataGetWorkSpaceSize14miopenHandle_tK24miopenTensorDescriptor_tK24miopenTensorDescriptor_tK29miopenConvolutionDescriptor_tK24miopenTensorDescriptor_tP6size_t"></span><span id="miopenConvolutionBackwardDataGetWorkSpaceSize__miopenHandle_t.miopenTensorDescriptor_tC.miopenTensorDescriptor_tC.miopenConvolutionDescriptor_tC.miopenTensorDescriptor_tC.sP"></span><span class="target" id="group__convolutions_1ga721816db33ff631a249c730c4fc10044"></span> <a class="reference internal" href="handle.html#_CPPv314miopenStatus_t" title="miopenStatus_t">miopenStatus_t</a> <code class="descname">miopenConvolutionBackwardDataGetWorkSpaceSize</code><span class="sig-paren">(</span>miopenHandle_t <em>handle</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>dyDesc</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>wDesc</em>, <em class="property">const</em> miopenConvolutionDescriptor_t <em>convDesc</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>dxDesc</em>, size_t *<em>workSpaceSize</em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv345miopenConvolutionBackwardDataGetWorkSpaceSize14miopenHandle_tK24miopenTensorDescriptor_tK24miopenTensorDescriptor_tK29miopenConvolutionDescriptor_tK24miopenTensorDescriptor_tP6size_t" title="Permalink to this definition">¶</a><br /></dt>
 <dd><p>Get the GPU memory required for the backward data convolution algorithm. </p>
-<p>For a provided tensor descriptors and algorithm selection, this function calculates and returns the workspace size required for back propagation on data. This call is required and must be executed before running the <a class="reference internal" href="#group__convolutions_1gac3cfda992eb4e8f10369c32985ce05ff"><span class="std std-ref">miopenFindConvolutionBackwardDataAlgorithm()</span></a> and before executing convolution layer functions. The maximum size of the memory needed from the set of potential forward convolution algorithms is returned.</p>
+<p>For a provided tensor descriptors and algorithm selection, this function calculates and returns the workspace size required for back propagation on data. This call is required and must be executed once before running <a class="reference internal" href="#group__convolutions_1gac3cfda992eb4e8f10369c32985ce05ff"><span class="std std-ref">miopenFindConvolutionBackwardDataAlgorithm()</span></a> in order to determine the largest required allocation for the algorithm search; i.e., the maximum size of the memory needed from the set of potential backward convolution algorithm is returned.</p>
 <p>If using Group/Depthwise convolution mode, call <a class="reference internal" href="#group__convolutions_1gad385d154146d67a4d9abc198c212c53b"><span class="std std-ref">miopenSetConvolutionGroupCount()</span></a> before running this.</p>
 <p><dl class="docutils">
 <dt><strong>Return</strong></dt>
@@ -865,7 +887,7 @@
 <dt id="_CPPv348miopenConvolutionBackwardWeightsGetWorkSpaceSize14miopenHandle_tK24miopenTensorDescriptor_tK24miopenTensorDescriptor_tK29miopenConvolutionDescriptor_tK24miopenTensorDescriptor_tP6size_t">
 <span id="_CPPv248miopenConvolutionBackwardWeightsGetWorkSpaceSize14miopenHandle_tK24miopenTensorDescriptor_tK24miopenTensorDescriptor_tK29miopenConvolutionDescriptor_tK24miopenTensorDescriptor_tP6size_t"></span><span id="miopenConvolutionBackwardWeightsGetWorkSpaceSize__miopenHandle_t.miopenTensorDescriptor_tC.miopenTensorDescriptor_tC.miopenConvolutionDescriptor_tC.miopenTensorDescriptor_tC.sP"></span><span class="target" id="group__convolutions_1ga64fad4ae595042f171ad003f6fdcc539"></span> <a class="reference internal" href="handle.html#_CPPv314miopenStatus_t" title="miopenStatus_t">miopenStatus_t</a> <code class="descname">miopenConvolutionBackwardWeightsGetWorkSpaceSize</code><span class="sig-paren">(</span>miopenHandle_t <em>handle</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>dyDesc</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>xDesc</em>, <em class="property">const</em> miopenConvolutionDescriptor_t <em>convDesc</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>dwDesc</em>, size_t *<em>workSpaceSize</em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv348miopenConvolutionBackwardWeightsGetWorkSpaceSize14miopenHandle_tK24miopenTensorDescriptor_tK24miopenTensorDescriptor_tK29miopenConvolutionDescriptor_tK24miopenTensorDescriptor_tP6size_t" title="Permalink to this definition">¶</a><br /></dt>
 <dd><p>Get the GPU memory required for the backward weights convolution algorithm. </p>
-<p>For a provided tensor descriptors and algorithm selection, this function calculates and returns the workspace size required for back propagation on weights. This call is required and must be executed before running the <a class="reference internal" href="#group__convolutions_1ga022c767dce5026daf4c87afaa6466185"><span class="std std-ref">miopenFindConvolutionBackwardWeightsAlgorithm()</span></a> and before executing convolution layer functions. The maximum size of the memory needed from the set of potential forward convolution algorithms is returned.</p>
+<p>For a provided tensor descriptors and algorithm selection, this function calculates and returns the workspace size required for back propagation on data. This call is required and must be executed once before running <a class="reference internal" href="#group__convolutions_1ga022c767dce5026daf4c87afaa6466185"><span class="std std-ref">miopenFindConvolutionBackwardWeightsAlgorithm()</span></a> in order to determine the largest required allocation for the algorithm search; i.e., the maximum size of the memory needed from the set of potential backward weights convolution algorithm is returned.</p>
 <p>If using Group/Depthwise convolution mode, call <a class="reference internal" href="#group__convolutions_1gad385d154146d67a4d9abc198c212c53b"><span class="std std-ref">miopenSetConvolutionGroupCount()</span></a> before running this.</p>
 <p><dl class="docutils">
 <dt><strong>Return</strong></dt>
@@ -931,7 +953,7 @@
 <dt id="_CPPv332miopenConvolutionBackwardWeights14miopenHandle_tPKvK24miopenTensorDescriptor_tPKvK24miopenTensorDescriptor_tPKvK29miopenConvolutionDescriptor_t31miopenConvBwdWeightsAlgorithm_tPKvK24miopenTensorDescriptor_tPvPv6size_t">
 <span id="_CPPv232miopenConvolutionBackwardWeights14miopenHandle_tPKvK24miopenTensorDescriptor_tPKvK24miopenTensorDescriptor_tPKvK29miopenConvolutionDescriptor_t31miopenConvBwdWeightsAlgorithm_tPKvK24miopenTensorDescriptor_tPvPv6size_t"></span><span id="miopenConvolutionBackwardWeights__miopenHandle_t.voidCP.miopenTensorDescriptor_tC.voidCP.miopenTensorDescriptor_tC.voidCP.miopenConvolutionDescriptor_tC.miopenConvBwdWeightsAlgorithm_t.voidCP.miopenTensorDescriptor_tC.voidP.voidP.s"></span><span class="target" id="group__convolutions_1gaa0933e4a12bd7d2e25bdee4884e2d5f0"></span> <a class="reference internal" href="handle.html#_CPPv314miopenStatus_t" title="miopenStatus_t">miopenStatus_t</a> <code class="descname">miopenConvolutionBackwardWeights</code><span class="sig-paren">(</span>miopenHandle_t <em>handle</em>, <em class="property">const</em> void *<em>alpha</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>dyDesc</em>, <em class="property">const</em> void *<em>dy</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>xDesc</em>, <em class="property">const</em> void *<em>x</em>, <em class="property">const</em> miopenConvolutionDescriptor_t <em>convDesc</em>, <a class="reference internal" href="#_CPPv331miopenConvBwdWeightsAlgorithm_t" title="miopenConvBwdWeightsAlgorithm_t">miopenConvBwdWeightsAlgorithm_t</a> <em>algo</em>, <em class="property">const</em> void *<em>beta</em>, <em class="property">const</em> miopenTensorDescriptor_t <em>dwDesc</em>, void *<em>dw</em>, void *<em>workSpace</em>, size_t <em>workSpaceSize</em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv332miopenConvolutionBackwardWeights14miopenHandle_tPKvK24miopenTensorDescriptor_tPKvK24miopenTensorDescriptor_tPKvK29miopenConvolutionDescriptor_t31miopenConvBwdWeightsAlgorithm_tPKvK24miopenTensorDescriptor_tPvPv6size_t" title="Permalink to this definition">¶</a><br /></dt>
 <dd><p>Execute a backward weights convolution layer. </p>
-<p>Runs the backward weights convolution layer based on the selected algorithm. The function <a class="reference internal" href="#group__convolutions_1ga64fad4ae595042f171ad003f6fdcc539"><span class="std std-ref">miopenConvolutionBackwardWeightsGetWorkSpaceSize()</span></a> and <a class="reference internal" href="#group__convolutions_1ga022c767dce5026daf4c87afaa6466185"><span class="std std-ref">miopenFindConvolutionBackwardWeightsAlgorithm()</span></a> must have been executed previously to determine the required memory needed for the workspace and the best convolutional algorithm, respectively.</p>
+<p>Runs the backward weights convolution layer based on the selected algorithm. The function <a class="reference internal" href="#group__convolutions_1ga022c767dce5026daf4c87afaa6466185"><span class="std std-ref">miopenFindConvolutionBackwardWeightsAlgorithm()</span></a> must have been executed previously to determine the required memory needed for the workspace and the best convolutional algorithm.</p>
 <p>If using Group/Depthwise convolution mode, call <a class="reference internal" href="#group__convolutions_1gad385d154146d67a4d9abc198c212c53b"><span class="std std-ref">miopenSetConvolutionGroupCount()</span></a> before running this.</p>
 <p><dl class="docutils">
 <dt><strong>Return</strong></dt>
@@ -1049,7 +1071,7 @@
     <script type="text/javascript">
         var DOCUMENTATION_OPTIONS = {
             URL_ROOT:'./',
-            VERSION:'1.5.0',
+            VERSION:'1.7.1',
             COLLAPSE_INDEX:false,
             FILE_SUFFIX:'.html',
             HAS_SOURCE:  true,

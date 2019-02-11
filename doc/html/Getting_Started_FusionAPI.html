@@ -66,7 +66,7 @@
             
             
               <div class="version">
-                1.5.0
+                1.7.1
               </div>
             
           
@@ -93,6 +93,10 @@
               <p class="caption"><span class="caption-text">Contents:</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="releasenotes.html">MIOpen Release notes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">02/06/2019 [ 1.7.1 ]</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">12/19/2018 [ 1.7.0 ]</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">11/18/2018 [ 1.6.0 ]</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">09/14/2018 [ 1.5.0 ]</a></li>
 <li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">07/30/2018 [ 1.4.2 ]</a></li>
 <li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">07/19/2018 [ 1.4.1 ]</a></li>
 <li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">07/06/2018 [ 1.4.0 ]</a></li>
@@ -113,7 +117,11 @@
 <li class="toctree-l2"><a class="reference internal" href="install.html#configuring-with-cmake">Configuring with cmake</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="install.html#for-opencl-run">For OpenCL, run:</a></li>
 <li class="toctree-l3"><a class="reference internal" href="install.html#for-hip-run">For HIP, run:</a></li>
-<li class="toctree-l3"><a class="reference internal" href="install.html#setting-up-locations">Setting up locations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="install.html#setting-up-locations">Setting Up Locations</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="install.html#system-performance-database-and-user-database">System Performance Database and User Database</a></li>
+<li class="toctree-l4"><a class="reference internal" href="install.html#persistent-program-cache">Persistent Program Cache</a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="install.html#changing-the-cmake-configuration">Changing the cmake configuration</a></li>
 </ul>
 </li>
@@ -127,15 +135,24 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="driver.html">MIOpenDriver</a></li>
+<li class="toctree-l1"><a class="reference internal" href="DebugAndLogging.html">Debugging and Logging</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#logging">Logging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#log-levels">Log Levels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#layer-filtering">Layer Filtering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#rocblas-logging-and-behavior">rocBlas Logging and Behavior</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="cache.html">Kernel Cache</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="cache.html#clear-the-cache">Clear the cache</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cache.html#disabling-the-cache">Disabling the cache</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cache.html#updating-miopen-and-removing-the-cache">Updating MIOpen and removing the cache</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="perfdatabase.html">Performance Database</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="perfdatabase.html#auto-tuning-the-kernels">Auto-tuning the kernels.</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="perfdatabase.html#miopen-find-enforce">MIOPEN_FIND_ENFORCE</a></li>
 <li class="toctree-l3"><a class="reference internal" href="perfdatabase.html#miopen-find-enforce-scope">MIOPEN_FIND_ENFORCE_SCOPE</a></li>
+<li class="toctree-l3"><a class="reference internal" href="perfdatabase.html#updating-miopen-and-the-user-db">Updating MIOpen and the User Db</a></li>
 </ul>
 </li>
 </ul>
@@ -147,12 +164,17 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#create-a-fusion-plan">Create a Fusion Plan</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#create-and-add-operators">Create and add Operators</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#a-name-compile-fusion-a-compile-the-fusion-plan"><a name="compile_fusion"></a>Compile the Fusion Plan</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#compile-the-fusion-plan">Compile the Fusion Plan</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#set-the-runtime-arguments">Set the runtime arguments</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#execute-a-fusion-plan">Execute a Fusion Plan</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#cleanup">Cleanup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#a-name-supported-fusions-a-supported-fusions"><a name="supported_fusions"></a> Supported Fusions</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#a-name-supported-fusions-a-performance-comparison-to-non-fused-kernels"><a name="supported_fusions"></a> Performance Comparison to Non-Fused Kernels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#supported-fusions">Supported Fusions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#convolution-based-fp32-fusion-for-inference">Convolution based FP32 Fusion for Inference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#convolution-based-fp16-fusion-for-inference">Convolution based FP16 Fusion for Inference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#batch-normalization-based-fusion-for-fp32-and-fp16-for-inference-and-training">Batch Normalization based fusion for FP32 and FP16 for Inference and Training</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#performance-comparison-to-non-fused-kernels">Performance Comparison to Non-Fused Kernels</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="apireference.html">API Reference</a><ul>
@@ -443,8 +465,8 @@
 <p>It may be noted that <code class="docutils literal notranslate"><span class="pre">conv_desc</span></code> is the regular MIOpen Convolution descriptor and is created in the standard way before it is referenced here. For more details on creating and setting the convolution descriptor please refer to the example code as well as the <a class="reference external" href="https://rocmsoftwareplatform.github.io/MIOpen/doc/html/convolution.html">MIOpen documentation</a>. In the above snippet <code class="docutils literal notranslate"><span class="pre">weights.desc</span></code> refers to the <code class="docutils literal notranslate"><span class="pre">miopenTensorDescriptor_t</span></code> for the convolution operations and <code class="docutils literal notranslate"><span class="pre">bias.desc</span></code> refers to the object of the same type for the bias operation. The order of insertion of operators indicates the order in which the operations would be performed on the data. Therefore, the above code implies that the convolution operation would be the first operation to execute on the incoming data, followed by the bias and activation operations.</p>
 <p>During this process, it is important that the returned codes be checked to make sure that the operations as well as their order is supported. The operator insertion might fail for a number of reasons such as unsupported sequence of operations, unsupported dimensions of the input or in case of convolution unsupported dimensions for the filters. In the above example, these aspects are ignored for the sake of simplicity.</p>
 </div>
-<div class="section" id="a-name-compile-fusion-a-compile-the-fusion-plan">
-<span id="a-name-compile-fusion-a-compile-the-fusion-plan"></span><h2><a name="compile_fusion"></a>Compile the Fusion Plan<a class="headerlink" href="#a-name-compile-fusion-a-compile-the-fusion-plan" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="compile-the-fusion-plan">
+<span id="compile-the-fusion-plan"></span><h2>Compile the Fusion Plan<a class="headerlink" href="#compile-the-fusion-plan" title="Permalink to this headline">¶</a></h2>
 <p>Following the operator addition, the user would compile the fusion plan, to populate the MIOpen kernel cache with the fused kernel and make it ready for execution. The API call that accomplishes this is:</p>
 <div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="n">miopenStatus_t</span>
 <span class="nf">miopenCompileFusionPlan</span><span class="p">(</span><span class="n">miopenHandle_t</span> <span class="n">handle</span><span class="p">,</span> <span class="n">miopenFusionPlanDescriptor_t</span> <span class="n">fusePlanDesc</span><span class="p">);</span>
@@ -525,16 +547,195 @@
 <span id="cleanup"></span><h2>Cleanup<a class="headerlink" href="#cleanup" title="Permalink to this headline">¶</a></h2>
 <p>Once the application is done with the fusion plan, the fusion plan and the fusion args objects may be destroyed using the API calls:</p>
 <div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="n">miopenStatus_t</span> <span class="nf">miopenDestroyFusionPlan</span><span class="p">(</span><span class="n">miopenFusionPlanDescriptor_t</span> <span class="n">fusePlanDesc</span><span class="p">);</span>
-
-<span class="n">miopenStatus_t</span> <span class="nf">miopenDestroyFusionPlan</span><span class="p">(</span><span class="n">miopenFusionPlanDescriptor_t</span> <span class="n">fusePlanDesc</span><span class="p">);</span>
 </pre></div>
 </div>
 <p>Once the fusion plan object is destroyed, all the operations created are destroyed automatically and do not need any special cleanup.</p>
 </div>
-<div class="section" id="a-name-supported-fusions-a-supported-fusions">
-<span id="a-name-supported-fusions-a-supported-fusions"></span><h2><a name="supported_fusions"></a> Supported Fusions<a class="headerlink" href="#a-name-supported-fusions-a-supported-fusions" title="Permalink to this headline">¶</a></h2>
-<p>The table below outlines the supported fusions as well as any applicable constraints. Currently, only convolutions with unit stride and unit dilation are supported. Currently, the fusion API is in the initial phases of development and may change.</p>
-<table border=0 cellpadding=0 cellspacing=0 width=713 style='border-collapse:
+<div class="section" id="supported-fusions">
+<span id="supported-fusions"></span><h2>Supported Fusions<a class="headerlink" href="#supported-fusions" title="Permalink to this headline">¶</a></h2>
+<p>The tables below outlines the supported fusions for fp32 and fp16 as well as any applicable constraints. <strong>(C = convolution, B = bias, N = batch normalization, A = activation)</strong></p>
+<div class="section" id="convolution-based-fp32-fusion-for-inference">
+<span id="convolution-based-fp32-fusion-for-inference"></span><h3>Convolution based FP32 Fusion for Inference<a class="headerlink" href="#convolution-based-fp32-fusion-for-inference" title="Permalink to this headline">¶</a></h3>
+<table border=1 cellpadding=0 cellspacing=0 width=714 style='border-collapse:
+ collapse;table-layout:fixed;width:535pt'>
+ <col width=93 style='mso-width-source:userset;mso-width-alt:2986;width:70pt'>
+ <col width=76 style='mso-width-source:userset;mso-width-alt:2432;width:57pt'>
+ <col width=51 style='mso-width-source:userset;mso-width-alt:1621;width:38pt'>
+ <col width=171 style='mso-width-source:userset;mso-width-alt:5461;width:128pt'>
+ <col width=51 style='mso-width-source:userset;mso-width-alt:1621;width:38pt'>
+ <col width=140 style='mso-width-source:userset;mso-width-alt:4480;width:105pt'>
+ <col width=132 style='mso-width-source:userset;mso-width-alt:4224;width:99pt'>
+ <tr height=21 style='height:16.0pt'>
+  <td colspan=7 height=21 class=xl66 width=714 style='height:16.0pt;width:535pt'>Single
+  Precision Floating Point</td>
+ </tr>
+ <tr height=45 style='height:34.0pt'>
+  <td height=45 class=xl66 style='height:34.0pt'><center><b>Combination</b></center></td>
+  <td class=xl66><center><b>Conv Algo</b></center></td>
+  <td class=xl66><center><b>Stride</b></center></td>
+  <td class=xl66><center><b>Filter Dims</b></center></td>
+  <td class=xl68 width=51 style='width:38pt'><center><b>N Mode*</b></center></td>
+  <td class=xl66><center><b>Activations</b></center></td>
+  <td class=xl68 width=132 style='width:99pt'><center><b>Other Constraints</b></center></td>
+ </tr>
+ <tr height=107 style='mso-height-source:userset;height:80.0pt'>
+  <td height=107 class=xl65 style='height:80.0pt'>CBNA</td>
+  <td class=xl65>Direct</td>
+  <td class=xl67 width=51 style='width:38pt'>1 and 2</td>
+  <td class=xl67 width=171 style='width:128pt'>3x3, 5x5, 7x7, 9x9, 11x11</td>
+  <td class=xl65>All</td>
+  <td class=xl65>All</td>
+  <td class=xl67 width=132 style='width:99pt'>stride and padding must be either
+  1 or 2</td>
+ </tr>
+ <tr height=63 style='mso-height-source:userset;height:47.0pt'>
+  <td rowspan=12 height=354 class=xl65 style='height:263.0pt'>CBA</td>
+  <td class=xl65>Direct</td>
+  <td class=xl65></td>
+  <td class=xl67 width=171 style='width:128pt'>1x1</td>
+  <td class=xl65></td>
+  <td class=xl65>All</td>
+  <td class=xl67 width=132 style='width:99pt'>stride/ padding not supported</td>
+ </tr>
+ <tr height=23 style='height:17.0pt'>
+  <td rowspan=11 height=291 class=xl65 style='height:216.0pt'>Winograd</td>
+  <td class=xl65>1</td>
+  <td class=xl67 width=171 style='width:128pt'>1x1, 2x2</td>
+  <td class=xl65>N/A</td>
+  <td class=xl65>Relu, Leaky Relu</td>
+  <td class=xl67 width=132 style='width:99pt'>c &gt;= 18</td>
+ </tr>
+ <tr height=39 style='mso-height-source:userset;height:29.0pt'>
+  <td height=39 class=xl65 style='height:29.0pt'>1</td>
+  <td class=xl67 width=171 style='width:128pt'>3x3</td>
+  <td class=xl65></td>
+  <td class=xl65>Relu, Leaky Relu</td>
+  <td class=xl67 width=132 style='width:99pt'>c &gt;= 18 and c is even</td>
+ </tr>
+ <tr height=23 style='height:17.0pt'>
+  <td height=23 class=xl65 style='height:17.0pt'>1</td>
+  <td class=xl67 width=171 style='width:128pt'>4x4, 5x5, 6x6</td>
+  <td class=xl65></td>
+  <td class=xl65>Relu, Leaky Relu</td>
+  <td class=xl67 width=132 style='width:99pt'>4 x c &gt;= 18</td>
+ </tr>
+ <tr height=23 style='height:17.0pt'>
+  <td height=23 class=xl65 style='height:17.0pt'>1</td>
+  <td class=xl67 width=171 style='width:128pt'>7x7, 8x8, 9x9</td>
+  <td class=xl65></td>
+  <td class=xl65>Relu, Leaky Relu</td>
+  <td class=xl67 width=132 style='width:99pt'>12 x c &gt;= 18</td>
+ </tr>
+ <tr height=23 style='height:17.0pt'>
+  <td height=23 class=xl65 style='height:17.0pt'>1</td>
+  <td class=xl67 width=171 style='width:128pt'>10x10, 11x11, 12x12</td>
+  <td class=xl65></td>
+  <td class=xl65>Relu, Leaky Relu</td>
+  <td class=xl67 width=132 style='width:99pt'>16 x c &gt;= 18</td>
+ </tr>
+ <tr height=23 style='height:17.0pt'>
+  <td height=23 class=xl65 style='height:17.0pt'>1</td>
+  <td class=xl67 width=171 style='width:128pt'>larger filter sizes</td>
+  <td class=xl65></td>
+  <td class=xl65>Relu, Leaky Relu</td>
+  <td class=xl67 width=132 style='width:99pt'>none</td>
+ </tr>
+ <tr height=23 style='height:17.0pt'>
+  <td height=23 class=xl65 style='height:17.0pt'>2</td>
+  <td class=xl67 width=171 style='width:128pt'>1x1</td>
+  <td class=xl65></td>
+  <td class=xl65>Relu, Leaky Relu</td>
+  <td class=xl67 width=132 style='width:99pt'>2 x c &gt;= 18</td>
+ </tr>
+ <tr height=23 style='height:17.0pt'>
+  <td height=23 class=xl65 style='height:17.0pt'>2</td>
+  <td class=xl67 width=171 style='width:128pt'>2x2, 3x3, 4x4, 5x5, 6x6</td>
+  <td class=xl65></td>
+  <td class=xl65>Relu, Leaky Relu</td>
+  <td class=xl67 width=132 style='width:99pt'>4 x c &gt;= 18</td>
+ </tr>
+ <tr height=23 style='height:17.0pt'>
+  <td height=23 class=xl65 style='height:17.0pt'>2</td>
+  <td class=xl67 width=171 style='width:128pt'>7x7</td>
+  <td class=xl65></td>
+  <td class=xl65>Relu, Leaky Relu</td>
+  <td class=xl67 width=132 style='width:99pt'>12 x c &gt;= 18</td>
+ </tr>
+ <tr height=45 style='height:34.0pt'>
+  <td height=45 class=xl65 style='height:34.0pt'>2</td>
+  <td class=xl67 width=171 style='width:128pt'>8x8, 9x9, 10x10, 11x11, 12x12</td>
+  <td class=xl65></td>
+  <td class=xl65>Relu, Leaky Relu</td>
+  <td class=xl67 width=132 style='width:99pt'>16 x c &gt;= 18</td>
+ </tr>
+ <tr height=23 style='height:17.0pt'>
+  <td height=23 class=xl65 style='height:17.0pt'>2</td>
+  <td class=xl67 width=171 style='width:128pt'>larger filter sizes</td>
+  <td class=xl65></td>
+  <td class=xl65>Relu, Leaky Relu</td>
+  <td class=xl67 width=132 style='width:99pt'>none</td>
+ </tr>
+ <tr height=45 style='height:34.0pt'>
+  <td height=45 class=xl65 style='height:34.0pt'>NA</td>
+  <td class=xl65>-</td>
+  <td class=xl65></td>
+  <td class=xl65>-</td>
+  <td class=xl65>All</td>
+  <td class=xl65>All</td>
+  <td class=xl67 width=132 style='width:99pt'>Padding not supported</td>
+ </tr>
+</table>
+*N mode is either spatial, or per activation. For CBA other asymmetric kernels are supported as well, but are not enumerated here for brevity.<p><br><br></p>
+</div>
+<div class="section" id="convolution-based-fp16-fusion-for-inference">
+<span id="convolution-based-fp16-fusion-for-inference"></span><h3>Convolution based FP16 Fusion for Inference<a class="headerlink" href="#convolution-based-fp16-fusion-for-inference" title="Permalink to this headline">¶</a></h3>
+<table border=1 cellpadding=0 cellspacing=0 width=714 style='border-collapse:
+ collapse;table-layout:fixed;width:535pt'>
+ <col width=93 style='mso-width-source:userset;mso-width-alt:2986;width:70pt'>
+ <col width=76 style='mso-width-source:userset;mso-width-alt:2432;width:57pt'>
+ <col width=51 style='mso-width-source:userset;mso-width-alt:1621;width:38pt'>
+ <col width=171 style='mso-width-source:userset;mso-width-alt:5461;width:128pt'>
+ <col width=51 style='mso-width-source:userset;mso-width-alt:1621;width:38pt'>
+ <col width=140 style='mso-width-source:userset;mso-width-alt:4480;width:105pt'>
+ <col width=132 style='mso-width-source:userset;mso-width-alt:4224;width:99pt'>
+ <tr height=21 style='height:16.0pt'>
+  <td colspan=7 height=21 class=xl67 width=714 style='height:16.0pt;width:535pt'><center><b>Half
+  Precision Floating Point</td></b></center>
+ </tr>
+ <tr height=45 style='height:34.0pt'>
+  <td height=45 class=xl66 style='height:34.0pt'><center><b>Combination</b></center></td>
+  <td class=xl66><center><b>Conv Algo</b></center></td>
+  <td class=xl66><center><b>Stride</b></center></td>
+  <td class=xl66><center><b>Filter Dims</b></center></td>
+  <td class=xl68 width=51 style='width:38pt'><center><b>N Mode*</b></center></td>
+  <td class=xl66><center><b>Activations</b></center></td>
+  <td class=xl68 width=132 style='width:99pt'><center><b>Other Constraints</b></center></td>
+ </tr>
+ <tr height=68 style='height:51.0pt'>
+  <td height=68 style='height:51.0pt'>CBNA</td>
+  <td>Direct</td>
+  <td class=xl69 width=51 style='width:38pt'>1 and 2</td>
+  <td>3x3, 5x5, 7x7, 9x9, 11x11</td>
+  <td>All</td>
+  <td>All</td>
+  <td class=xl68 width=132 style='width:99pt'>stride and padding must be either
+  1 or 2</td>
+ </tr>
+ <tr height=45 style='height:34.0pt'>
+  <td height=45 class=xl66 style='height:34.0pt'>CBA</td>
+  <td>Direct</td>
+  <td class=xl65></td>
+  <td>1x1</td>
+  <td></td>
+  <td>All</td>
+  <td class=xl68 width=132 style='width:99pt'>stride/ padding not supported</td>
+ </tr>
+</table><p>*N mode is either spatial, or per activation.
+<br><br></p>
+</div>
+<div class="section" id="batch-normalization-based-fusion-for-fp32-and-fp16-for-inference-and-training">
+<span id="batch-normalization-based-fusion-for-fp32-and-fp16-for-inference-and-training"></span><h3>Batch Normalization based fusion for FP32 and FP16 for Inference and Training<a class="headerlink" href="#batch-normalization-based-fusion-for-fp32-and-fp16-for-inference-and-training" title="Permalink to this headline">¶</a></h3>
+<table border=1 cellpadding=0 cellspacing=0 width=713 style='border-collapse:
  collapse;table-layout:fixed;width:534pt'>
  <col width=108 style='mso-width-source:userset;mso-width-alt:3456;width:81pt'>
  <col width=87 style='width:65pt'>
@@ -543,47 +744,34 @@
  <col width=123 style='mso-width-source:userset;mso-width-alt:3925;width:92pt'>
  <col width=87 style='width:65pt'>
  <tr height=45 style='height:34.0pt'>
-  <td height=45 class=xl65 width=108 style='height:34.0pt;width:81pt'>Combination</td>
-  <td class=xl65 width=87 style='width:65pt'>Conv Algo</td>
-  <td class=xl65 width=221 style='width:166pt'>Filter Dims</td>
-  <td class=xl65 width=87 style='width:65pt'>BN Mode</td>
-  <td class=xl65 width=123 style='width:92pt'>Activations</td>
-  <td class=xl65 width=87 style='width:65pt'>Other Constraints</td>
+  <td height=45 class=xl65 width=108 style='height:34.0pt;width:81pt'><center><b>Combination</b></center></td>
+  <td class=xl65 width=87 style='width:65pt'><center><b>N mode*</b></center></td>
+  <td class=xl65 width=123 style='width:92pt'><center><b>Activations</b></center></td>
+  <td class=xl65 width=87 style='width:65pt'><center><b>Constraints</b></center></td>
  </tr>
  <tr height=45 style='height:34.0pt'>
-  <td height=45 class=xl66 width=108 style='height:34.0pt;width:81pt'>CBNA</td>
-  <td class=xl66 width=87 style='width:65pt'>Direct</td>
-  <td class=xl66 width=221 style='width:166pt'>1x1, 3x3, 5x5, 7x7, 9x9, 11x11</td>
-  <td class=xl66 width=87 style='width:65pt'>All</td>
-  <td class=xl66 width=123 style='width:92pt'>All</td>
-  <td class=xl66 width=87 style='width:65pt'>Padding not supported</td>
- </tr>
- <tr height=23 style='height:17.0pt'>
-  <td rowspan=2 height=46 class=xl67 width=108 style='height:34.0pt;width:81pt'>CBA</td>
-  <td class=xl66 width=87 style='width:65pt'>Direct</td>
-  <td class=xl66 width=221 style='width:166pt'>1x1, 3x3, 5x5, 7x7, 9x9, 11x11</td>
-  <td class=xl66 width=87 style='width:65pt'></td>
-  <td class=xl66 width=123 style='width:92pt'>All</td>
-  <td class=xl66 width=87 style='width:65pt'></td>
- </tr>
- <tr height=23 style='height:17.0pt'>
-  <td height=23 class=xl66 width=87 style='height:17.0pt;width:65pt'>Winograd</td>
-  <td class=xl66 width=221 style='width:166pt'>3x3</td>
-  <td class=xl66 width=87 style='width:65pt'>N/A</td>
-  <td class=xl66 width=123 style='width:92pt'>Relu, Leaky Relu</td>
-  <td class=xl66 width=87 style='width:65pt'>c &gt;= 18</td>
+  <td height=45 class=xl66 width=108 style='height:34.0pt;width:81pt'>NA for inference</td>
+  <td class=xl66 width=87 style='width:65pt'><center>All</center></td>
+  <td class=xl66 width=123 style='width:92pt'><center>All</center></td>
+  <td class=xl66 width=87 style='width:65pt'>None </td>
  </tr>
  <tr height=45 style='height:34.0pt'>
-  <td height=45 class=xl66 width=108 style='height:34.0pt;width:81pt'>NA</td>
-  <td class=xl66 width=87 style='width:65pt'>-</td>
-  <td class=xl66 width=221 style='width:166pt'>-</td>
-  <td class=xl66 width=87 style='width:65pt'>All</td>
-  <td class=xl66 width=123 style='width:92pt'>All</td>
-  <td class=xl66 width=87 style='width:65pt'>Padding not supported</td>
+  <td height=46 class=xl67 width=108 style='height:34.0pt;width:81pt'>NA forward training</td>
+  <td class=xl66 width=87 style='width:65pt'><center>All</center></td>
+  <td class=xl66 width=123 style='width:92pt'><center>All</center></td>
+  <td class=xl66 width=87 style='width:65pt'>None </td>
  </tr>
-</table></div>
-<div class="section" id="a-name-supported-fusions-a-performance-comparison-to-non-fused-kernels">
-<span id="a-name-supported-fusions-a-performance-comparison-to-non-fused-kernels"></span><h2><a name="supported_fusions"></a> Performance Comparison to Non-Fused Kernels<a class="headerlink" href="#a-name-supported-fusions-a-performance-comparison-to-non-fused-kernels" title="Permalink to this headline">¶</a></h2>
+  <tr height=45 style='height:34.0pt'>
+  <td height=46 class=xl67 width=108 style='height:34.0pt;width:81pt'>NA backward training</td>
+  <td class=xl66 width=87 style='width:65pt'><center>All</center></td>
+  <td class=xl66 width=123 style='width:92pt'><center>All</center></td>
+  <td class=xl66 width=87 style='width:65pt'>None </td>
+ </tr></table>
+*N mode is either spatial, or per activation.
+<br><br></div>
+</div>
+<div class="section" id="performance-comparison-to-non-fused-kernels">
+<span id="performance-comparison-to-non-fused-kernels"></span><h2>Performance Comparison to Non-Fused Kernels<a class="headerlink" href="#performance-comparison-to-non-fused-kernels" title="Permalink to this headline">¶</a></h2>
 <p>The following graph depicts the speedup gained for a fused Convolution+Bias+Activation over a non-fused version, all configurations have a batch size of 64:</p>
 <p><img alt="CBA Graph" src="_images/cba.png" /></p>
 <p>Speedup obtained by fusing Batchnorm (spatial mode) with Activation are presented in the graph below:</p>
@@ -635,7 +823,7 @@
     <script type="text/javascript">
         var DOCUMENTATION_OPTIONS = {
             URL_ROOT:'./',
-            VERSION:'1.5.0',
+            VERSION:'1.7.1',
             COLLAPSE_INDEX:false,
             FILE_SUFFIX:'.html',
             HAS_SOURCE:  true,

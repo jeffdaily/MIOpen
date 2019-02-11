@@ -67,7 +67,7 @@
             
             
               <div class="version">
-                1.5.0
+                1.7.1
               </div>
             
           
@@ -94,6 +94,10 @@
               <p class="caption"><span class="caption-text">Contents:</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="releasenotes.html">MIOpen Release notes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">02/06/2019 [ 1.7.1 ]</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">12/19/2018 [ 1.7.0 ]</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">11/18/2018 [ 1.6.0 ]</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">09/14/2018 [ 1.5.0 ]</a></li>
 <li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">07/30/2018 [ 1.4.2 ]</a></li>
 <li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">07/19/2018 [ 1.4.1 ]</a></li>
 <li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">07/06/2018 [ 1.4.0 ]</a></li>
@@ -106,7 +110,7 @@
 <li class="toctree-l2"><a class="reference internal" href="releasenotes.html#initial-release">06/30/2017 [ 1.0.0 ] Initial release</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="install.html">Build and Install Instructions</a><ul>
+<li class="toctree-l1"><a class="reference internal" href="install.html">MIOpen</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="install.html#prerequisites">Prerequisites</a></li>
 <li class="toctree-l2"><a class="reference internal" href="install.html#installing-the-dependencies">Installing the dependencies</a></li>
 <li class="toctree-l2"><a class="reference internal" href="install.html#installing-miopen-with-pre-built-packages">Installing MIOpen with pre-built packages</a></li>
@@ -114,7 +118,11 @@
 <li class="toctree-l2"><a class="reference internal" href="install.html#configuring-with-cmake">Configuring with cmake</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="install.html#for-opencl-run">For OpenCL, run:</a></li>
 <li class="toctree-l3"><a class="reference internal" href="install.html#for-hip-run">For HIP, run:</a></li>
-<li class="toctree-l3"><a class="reference internal" href="install.html#setting-up-locations">Setting up locations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="install.html#setting-up-locations">Setting Up Locations</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="install.html#system-performance-database-and-user-database">System Performance Database and User Database</a></li>
+<li class="toctree-l4"><a class="reference internal" href="install.html#persistent-program-cache">Persistent Program Cache</a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="install.html#changing-the-cmake-configuration">Changing the cmake configuration</a></li>
 </ul>
 </li>
@@ -128,15 +136,24 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="driver.html">MIOpenDriver</a></li>
+<li class="toctree-l1"><a class="reference internal" href="DebugAndLogging.html">Debugging and Logging</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#logging">Logging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#log-levels">Log Levels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#layer-filtering">Layer Filtering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#rocblas-logging-and-behavior">rocBlas Logging and Behavior</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="cache.html">Kernel Cache</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="cache.html#clear-the-cache">Clear the cache</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cache.html#disabling-the-cache">Disabling the cache</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cache.html#updating-miopen-and-removing-the-cache">Updating MIOpen and removing the cache</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="perfdatabase.html">Performance Database</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="perfdatabase.html#auto-tuning-the-kernels">Auto-tuning the kernels.</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="perfdatabase.html#miopen-find-enforce">MIOPEN_FIND_ENFORCE</a></li>
 <li class="toctree-l3"><a class="reference internal" href="perfdatabase.html#miopen-find-enforce-scope">MIOPEN_FIND_ENFORCE_SCOPE</a></li>
+<li class="toctree-l3"><a class="reference internal" href="perfdatabase.html#updating-miopen-and-the-user-db">Updating MIOpen and the User Db</a></li>
 </ul>
 </li>
 </ul>
@@ -148,12 +165,17 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#create-a-fusion-plan">Create a Fusion Plan</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#create-and-add-operators">Create and add Operators</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#a-name-compile-fusion-a-compile-the-fusion-plan"><a name="compile_fusion"></a>Compile the Fusion Plan</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#compile-the-fusion-plan">Compile the Fusion Plan</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#set-the-runtime-arguments">Set the runtime arguments</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#execute-a-fusion-plan">Execute a Fusion Plan</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#cleanup">Cleanup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#a-name-supported-fusions-a-supported-fusions"><a name="supported_fusions"></a> Supported Fusions</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#a-name-supported-fusions-a-performance-comparison-to-non-fused-kernels"><a name="supported_fusions"></a> Performance Comparison to Non-Fused Kernels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#supported-fusions">Supported Fusions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="Getting_Started_FusionAPI.html#convolution-based-fp32-fusion-for-inference">Convolution based FP32 Fusion for Inference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Getting_Started_FusionAPI.html#convolution-based-fp16-fusion-for-inference">Convolution based FP16 Fusion for Inference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Getting_Started_FusionAPI.html#batch-normalization-based-fusion-for-fp32-and-fp16-for-inference-and-training">Batch Normalization based fusion for FP32 and FP16 for Inference and Training</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#performance-comparison-to-non-fused-kernels">Performance Comparison to Non-Fused Kernels</a></li>
 </ul>
 </li>
 <li class="toctree-l1 current"><a class="reference internal" href="apireference.html">API Reference</a><ul class="current">
@@ -384,13 +406,13 @@
 <dl class="member">
 <dt id="_CPPv313miopenRNNRELU">
 <span id="_CPPv213miopenRNNRELU"></span><span id="miopenRNNRELU"></span><span class="target" id="group__RNN_1gga016f266507f199def908fe39c43d7877af714eb36c96ca365b643e7e8417c10cc"></span><code class="descname">miopenRNNRELU</code> = 0<a class="headerlink" href="#_CPPv313miopenRNNRELU" title="Permalink to this definition">¶</a><br /></dt>
-<dd><p>RNN ReLU activation </p>
+<dd><p>RNN with ReLU activation </p>
 </dd></dl>
 
 <dl class="member">
 <dt id="_CPPv313miopenRNNTANH">
 <span id="_CPPv213miopenRNNTANH"></span><span id="miopenRNNTANH"></span><span class="target" id="group__RNN_1gga016f266507f199def908fe39c43d7877a1d43e2e3151aa1266cc10e8623c0a32b"></span><code class="descname">miopenRNNTANH</code> = 1<a class="headerlink" href="#_CPPv313miopenRNNTANH" title="Permalink to this definition">¶</a><br /></dt>
-<dd><p>RNN tanh activation </p>
+<dd><p>RNN with tanh activation </p>
 </dd></dl>
 
 <dl class="member">
@@ -684,7 +706,7 @@
 <li><code class="docutils literal notranslate"><span class="pre">rnnDesc</span></code>: Fully populated RNN layer descriptor type (input) </li>
 <li><code class="docutils literal notranslate"><span class="pre">xDesc</span></code>: A previously populated tensor descriptor (input) </li>
 <li><code class="docutils literal notranslate"><span class="pre">wDesc</span></code>: A previously allocated tensor descriptor (output) </li>
-<li><code class="docutils literal notranslate"><span class="pre">dtype</span></code>: MIOpen data type enum (input) </li>
+<li><code class="docutils literal notranslate"><span class="pre">dtype</span></code>: MIOpen data type enum, currently only fp32 is supported (input) </li>
 </ul>
 </dd>
 </dl>
@@ -1305,7 +1327,7 @@
     <script type="text/javascript">
         var DOCUMENTATION_OPTIONS = {
             URL_ROOT:'./',
-            VERSION:'1.5.0',
+            VERSION:'1.7.1',
             COLLAPSE_INDEX:false,
             FILE_SUFFIX:'.html',
             HAS_SOURCE:  true,

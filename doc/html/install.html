@@ -66,7 +66,7 @@
             
             
               <div class="version">
-                1.5.0
+                1.7.1
               </div>
             
           
@@ -93,6 +93,10 @@
               <p class="caption"><span class="caption-text">Contents:</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="releasenotes.html">MIOpen Release notes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">02/06/2019 [ 1.7.1 ]</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">12/19/2018 [ 1.7.0 ]</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">11/18/2018 [ 1.6.0 ]</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">09/14/2018 [ 1.5.0 ]</a></li>
 <li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">07/30/2018 [ 1.4.2 ]</a></li>
 <li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">07/19/2018 [ 1.4.1 ]</a></li>
 <li class="toctree-l2"><a class="reference internal" href="releasenotes.html#">07/06/2018 [ 1.4.0 ]</a></li>
@@ -113,7 +117,11 @@
 <li class="toctree-l2"><a class="reference internal" href="#configuring-with-cmake">Configuring with cmake</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#for-opencl-run">For OpenCL, run:</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#for-hip-run">For HIP, run:</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#setting-up-locations">Setting up locations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#setting-up-locations">Setting Up Locations</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#system-performance-database-and-user-database">System Performance Database and User Database</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#persistent-program-cache">Persistent Program Cache</a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="#changing-the-cmake-configuration">Changing the cmake configuration</a></li>
 </ul>
 </li>
@@ -127,15 +135,24 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="driver.html">MIOpenDriver</a></li>
+<li class="toctree-l1"><a class="reference internal" href="DebugAndLogging.html">Debugging and Logging</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#logging">Logging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#log-levels">Log Levels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#layer-filtering">Layer Filtering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DebugAndLogging.html#rocblas-logging-and-behavior">rocBlas Logging and Behavior</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="cache.html">Kernel Cache</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="cache.html#clear-the-cache">Clear the cache</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cache.html#disabling-the-cache">Disabling the cache</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cache.html#updating-miopen-and-removing-the-cache">Updating MIOpen and removing the cache</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="perfdatabase.html">Performance Database</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="perfdatabase.html#auto-tuning-the-kernels">Auto-tuning the kernels.</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="perfdatabase.html#miopen-find-enforce">MIOPEN_FIND_ENFORCE</a></li>
 <li class="toctree-l3"><a class="reference internal" href="perfdatabase.html#miopen-find-enforce-scope">MIOPEN_FIND_ENFORCE_SCOPE</a></li>
+<li class="toctree-l3"><a class="reference internal" href="perfdatabase.html#updating-miopen-and-the-user-db">Updating MIOpen and the User Db</a></li>
 </ul>
 </li>
 </ul>
@@ -147,12 +164,17 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#create-a-fusion-plan">Create a Fusion Plan</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#create-and-add-operators">Create and add Operators</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#a-name-compile-fusion-a-compile-the-fusion-plan"><a name="compile_fusion"></a>Compile the Fusion Plan</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#compile-the-fusion-plan">Compile the Fusion Plan</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#set-the-runtime-arguments">Set the runtime arguments</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#execute-a-fusion-plan">Execute a Fusion Plan</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#cleanup">Cleanup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#a-name-supported-fusions-a-supported-fusions"><a name="supported_fusions"></a> Supported Fusions</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#a-name-supported-fusions-a-performance-comparison-to-non-fused-kernels"><a name="supported_fusions"></a> Performance Comparison to Non-Fused Kernels</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#supported-fusions">Supported Fusions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="Getting_Started_FusionAPI.html#convolution-based-fp32-fusion-for-inference">Convolution based FP32 Fusion for Inference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Getting_Started_FusionAPI.html#convolution-based-fp16-fusion-for-inference">Convolution based FP16 Fusion for Inference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Getting_Started_FusionAPI.html#batch-normalization-based-fusion-for-fp32-and-fp16-for-inference-and-training">Batch Normalization based fusion for FP32 and FP16 for Inference and Training</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="Getting_Started_FusionAPI.html#performance-comparison-to-non-fused-kernels">Performance Comparison to Non-Fused Kernels</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="apireference.html">API Reference</a><ul>
@@ -392,11 +414,11 @@
 <li><a class="reference external" href="https://github.com/ROCmSoftwarePlatform/MIOpenGEMM">MIOpenGEMM</a> to enable various functionalities including transposed and dilated convolutions</li>
 <li>ROCm cmake modules can be installed from <a class="reference external" href="https://github.com/RadeonOpenCompute/rocm-cmake">here</a></li>
 <li><a class="reference external" href="http://half.sourceforge.net/">Half</a> - IEEE 754-based half-precision floating point library</li>
-<li><a class="reference external" href="https://www.openssl.org/">OpenSSL</a> or <a class="reference external" href="https://www.libressl.org/">libressl</a></li>
 <li><a class="reference external" href="http://www.boost.org/">Boost</a> at least version 1.58<ul>
 <li>MIOpen uses <code class="docutils literal notranslate"><span class="pre">boost-system</span></code> and <code class="docutils literal notranslate"><span class="pre">boost-filesystem</span></code> packages to enable persistent <a class="reference external" href="https://github.com/ROCmSoftwarePlatform/MIOpen/blob/master/doc/src/cache.md">kernel cache</a></li>
 </ul>
 </li>
+<li><a class="reference external" href="https://github.com/ROCmSoftwarePlatform/rocBLAS">rocBlas</a> Minimum version 14.3</li>
 </ul>
 </div>
 <div class="section" id="installing-the-dependencies">
@@ -406,6 +428,8 @@
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">cmake</span> <span class="o">-</span><span class="n">P</span> <span class="n">install_deps</span><span class="o">.</span><span class="n">cmake</span> <span class="o">--</span><span class="n">prefix</span> <span class="o">/</span><span class="n">some</span><span class="o">/</span><span class="n">local</span><span class="o">/</span><span class="nb">dir</span>
 </pre></div>
 </div>
+<p>This prefix can used to specify the dependency path during the configuration phase using the <code class="docutils literal notranslate"><span class="pre">CMAKE_PREFIX_PATH</span></code>.</p>
+<p>MIOpen’s HIP backend uses <a class="reference external" href="https://github.com/ROCmSoftwarePlatform/rocBLAS">rocBlas</a> by default. Users can intall rocBlas minimum release by using <code class="docutils literal notranslate"><span class="pre">apt-get</span> <span class="pre">install</span> <span class="pre">rocblas</span></code>. To disable using rocBlas set the configuration flag <code class="docutils literal notranslate"><span class="pre">-DMIOPEN_USE_ROCBLAS=Off</span></code>. rocBlas is <em>not</em> available for the OpenCL backend.</p>
 <p>Instructions to manually install all the dependencies on Ubuntu v16 are present in this <a class="reference external" href="#installing-the-dependencies-manually">section</a>.</p>
 </div>
 <div class="section" id="installing-miopen-with-pre-built-packages">
@@ -434,6 +458,10 @@
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">cmake</span> <span class="o">-</span><span class="n">DMIOPEN_BACKEND</span><span class="o">=</span><span class="n">OpenCL</span> <span class="o">-</span><span class="n">DOPENCL_LIBRARIES</span><span class="o">=&lt;</span><span class="n">opencl</span><span class="o">-</span><span class="n">library</span><span class="o">-</span><span class="n">path</span><span class="o">&gt;</span> <span class="o">-</span><span class="n">DOPENCL_INCLUDE_DIRS</span><span class="o">=&lt;</span><span class="n">opencl</span><span class="o">-</span><span class="n">headers</span><span class="o">-</span><span class="n">path</span><span class="o">&gt;</span> <span class="o">..</span>
 </pre></div>
 </div>
+<p>And an example setting the dependency path:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">cmake</span> <span class="o">-</span><span class="n">DMIOPEN_BACKEND</span><span class="o">=</span><span class="n">OpenCL</span> <span class="o">-</span><span class="n">DCMAKE_PREFIX_PATH</span><span class="o">=/</span><span class="n">some</span><span class="o">/</span><span class="n">local</span><span class="o">/</span><span class="nb">dir</span> <span class="o">..</span>
+</pre></div>
+</div>
 </div>
 <div class="section" id="for-hip-run">
 <span id="for-hip-run"></span><h3>For HIP, run:<a class="headerlink" href="#for-hip-run" title="Permalink to this headline">¶</a></h3>
@@ -442,30 +470,32 @@
 </pre></div>
 </div>
 <p>An example cmake step can be:</p>
-<ul class="simple">
-<li><code class="docutils literal notranslate"><span class="pre">OpenSSL</span></code> installed using <code class="docutils literal notranslate"><span class="pre">apt-get</span></code> on Ubuntu v16? <strong>Yes</strong>.</li>
-</ul>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">CXX</span><span class="o">=/</span><span class="n">opt</span><span class="o">/</span><span class="n">rocm</span><span class="o">/</span><span class="n">hcc</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">hcc</span> <span class="n">cmake</span> <span class="o">-</span><span class="n">DMIOPEN_BACKEND</span><span class="o">=</span><span class="n">HIP</span> <span class="o">-</span><span class="n">DCMAKE_PREFIX_PATH</span><span class="o">=</span><span class="s2">&quot;/opt/rocm/hcc;/opt/rocm/hip&quot;</span> <span class="o">-</span><span class="n">DCMAKE_CXX_FLAGS</span><span class="o">=</span><span class="s2">&quot;-isystem /usr/include/x86_64-linux-gnu/&quot;</span> <span class="o">..</span>
-</pre></div>
-</div>
-<ul class="simple">
-<li><code class="docutils literal notranslate"><span class="pre">OpenSSL</span></code> installed using <code class="docutils literal notranslate"><span class="pre">apt-get</span></code> on Ubuntu v16? <strong>No</strong>.</li>
-</ul>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">CXX</span><span class="o">=/</span><span class="n">opt</span><span class="o">/</span><span class="n">rocm</span><span class="o">/</span><span class="n">hcc</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">hcc</span> <span class="n">cmake</span> <span class="o">-</span><span class="n">DMIOPEN_BACKEND</span><span class="o">=</span><span class="n">HIP</span> <span class="o">-</span><span class="n">DCMAKE_PREFIX_PATH</span><span class="o">=</span><span class="s2">&quot;/opt/rocm/hcc;/opt/rocm/hip&quot;</span> <span class="o">..</span>
 </pre></div>
 </div>
 </div>
 <div class="section" id="setting-up-locations">
-<span id="setting-up-locations"></span><h3>Setting up locations<a class="headerlink" href="#setting-up-locations" title="Permalink to this headline">¶</a></h3>
+<span id="setting-up-locations"></span><h3>Setting Up Locations<a class="headerlink" href="#setting-up-locations" title="Permalink to this headline">¶</a></h3>
 <p>By default the install location is set to ‘/opt/rocm’, this can be set by using <code class="docutils literal notranslate"><span class="pre">CMAKE_INSTALL_PREFIX</span></code>:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">cmake</span> <span class="o">-</span><span class="n">DMIOPEN_BACKEND</span><span class="o">=</span><span class="n">OpenCL</span> <span class="o">-</span><span class="n">DCMAKE_INSTALL_PREFIX</span><span class="o">=&lt;</span><span class="n">miopen</span><span class="o">-</span><span class="n">installed</span><span class="o">-</span><span class="n">path</span><span class="o">&gt;</span> <span class="o">..</span>
 </pre></div>
 </div>
+<div class="section" id="system-performance-database-and-user-database">
+<span id="system-performance-database-and-user-database"></span><h4>System Performance Database and User Database<a class="headerlink" href="#system-performance-database-and-user-database" title="Permalink to this headline">¶</a></h4>
 <p>The default path to the System PerfDb is <code class="docutils literal notranslate"><span class="pre">miopen/share/miopen/db/</span></code> within install location. The default path to the User PerfDb is <code class="docutils literal notranslate"><span class="pre">~/.config/miopen/</span></code>. For development purposes, setting <code class="docutils literal notranslate"><span class="pre">BUILD_DEV</span></code> will change default path to both database files to the source directory:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">cmake</span> <span class="o">-</span><span class="n">DMIOPEN_BACKEND</span><span class="o">=</span><span class="n">OpenCL</span> <span class="o">-</span><span class="n">DBUILD_DEV</span><span class="o">=</span><span class="n">On</span> <span class="o">..</span>
 </pre></div>
 </div>
 <p>Database paths can be explicitly customized by means of <code class="docutils literal notranslate"><span class="pre">MIOPEN_DB_PATH</span></code> (System PerfDb) and <code class="docutils literal notranslate"><span class="pre">MIOPEN_USER_DB_PATH</span></code> (User PerfDb) cmake variables.</p>
+<p>If the user installs a new version of MIOpen, it is recommended that the user move, or delete their old user database file. The user can find the file with the suffix <code class="docutils literal notranslate"><span class="pre">*.updb.txt</span></code> in the user perf db path.</p>
+<p>More information about the performance database can be found <a class="reference external" href="https://github.com/ROCmSoftwarePlatform/MIOpen/blob/master/doc/src/perfdatabase.md">here</a>.</p>
+</div>
+<div class="section" id="persistent-program-cache">
+<span id="persistent-program-cache"></span><h4>Persistent Program Cache<a class="headerlink" href="#persistent-program-cache" title="Permalink to this headline">¶</a></h4>
+<p>MIOpen by default caches the device programs in the location <code class="docutils literal notranslate"><span class="pre">~/.cache/miopen/</span></code>. In the cache directory there exists a directory for each version of MIOpen. Users change the location of the cache directory during configuration using the flag <code class="docutils literal notranslate"><span class="pre">-DMIOPEN_CACHE_DIR=&lt;cache-directory-path&gt;</span></code>.</p>
+<p>Users can also disable the cache during runtime using the environmental variable set as <code class="docutils literal notranslate"><span class="pre">MIOPEN_DISABLE_CACHE=1</span></code>.</p>
+<p>If the compiler changes, or the user modifies the kernels then the cache must be deleted for the MIOpen version in use; e.g., <code class="docutils literal notranslate"><span class="pre">rm</span> <span class="pre">-rf</span> <span class="pre">~/.cache/miopen/&lt;miopen-version-number&gt;</span></code>. More information about the cache can be found <a class="reference external" href="https://github.com/ROCmSoftwarePlatform/MIOpen/blob/master/doc/src/cache.md">here</a>.</p>
+</div>
 </div>
 <div class="section" id="changing-the-cmake-configuration">
 <span id="changing-the-cmake-configuration"></span><h3>Changing the cmake configuration<a class="headerlink" href="#changing-the-cmake-configuration" title="Permalink to this headline">¶</a></h3>
@@ -523,9 +553,8 @@
 </div>
 <div class="section" id="installing-the-dependencies-manually">
 <span id="installing-the-dependencies-manually"></span><h2>Installing the dependencies manually<a class="headerlink" href="#installing-the-dependencies-manually" title="Permalink to this headline">¶</a></h2>
-<p>If Ubuntu v16 is used then the <code class="docutils literal notranslate"><span class="pre">OpenSSL</span></code> and <code class="docutils literal notranslate"><span class="pre">Boost</span></code> packages can also be installed by:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sudo</span> <span class="n">apt</span><span class="o">-</span><span class="n">get</span> <span class="n">install</span> <span class="n">libssl</span><span class="o">-</span><span class="n">dev</span>
-<span class="n">sudo</span> <span class="n">apt</span><span class="o">-</span><span class="n">get</span> <span class="n">install</span> <span class="n">libboost</span><span class="o">-</span><span class="n">dev</span>
+<p>If Ubuntu v16 is used then the <code class="docutils literal notranslate"><span class="pre">Boost</span></code> packages can also be installed by:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sudo</span> <span class="n">apt</span><span class="o">-</span><span class="n">get</span> <span class="n">install</span> <span class="n">libboost</span><span class="o">-</span><span class="n">dev</span>
 <span class="n">sudo</span> <span class="n">apt</span><span class="o">-</span><span class="n">get</span> <span class="n">install</span> <span class="n">libboost</span><span class="o">-</span><span class="n">system</span><span class="o">-</span><span class="n">dev</span>
 <span class="n">sudo</span> <span class="n">apt</span><span class="o">-</span><span class="n">get</span> <span class="n">install</span> <span class="n">libboost</span><span class="o">-</span><span class="n">filesystem</span><span class="o">-</span><span class="n">dev</span>
 </pre></div>
@@ -589,7 +618,7 @@
     <script type="text/javascript">
         var DOCUMENTATION_OPTIONS = {
             URL_ROOT:'./',
-            VERSION:'1.5.0',
+            VERSION:'1.7.1',
             COLLAPSE_INDEX:false,
             FILE_SUFFIX:'.html',
             HAS_SOURCE:  true,
