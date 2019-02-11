@@ -2,6 +2,112 @@
 ## MIOpen Release notes
 
 
+### 02/06/2019 [ 1.7.1 ]
+
+- This release contains minor bug fixes and performance improvements.
+  
+
+Changes:
+
+- Fixed corrupt and obsolete performance database entries
+- Fixed issue #70, "SIGFPE (DIV/0) in ConvOclBwdWrW2::GetSolution()"
+- Fixed issue #72, "workSpaceSize check assertion fails in ConvolutionBackwardWeights() - DEBUG builds only"
+- Fixed issue #77, "Results of ConvBwdWeightsAlgoDirect and ConvBwdWeightsAlgoGEMM mismatch for some specific parameters"
+- Removed default dependency of RNNs on rocBLAS
+- Added a workaround for softmax fp16 correctness issue
+- Added check to only make MIOpen with static boost libraries
+- Improved performance database coverage
+
+Known Issues:
+
+- RNNs do not support fp16
+- OpenCL backend does not support GEMM convolutions in fp16
+- Layer fusions for convolution 1x1 fp16 are not supported
+- Layer fusions for large image 1x1 convolutions may cause an exception instead of a warning during compile phase if plan is not supported
+
+
+### 12/19/2018 [ 1.7.0 ]
+
+- This release contains general bug fixes and an updated performance database
+- Group convolutions backwards weights performance has been improved
+- Logging across the library has been improved
+- Performance database has been updated
+  
+Changes:
+
+- Fixed logging issues with group convolution and pooling
+- Fixed sphinx version issue in document generation
+- Fixed issues with corrupt entries in performance database
+- Removed external dependency on libSSL and libCrypto
+- Added support for large image backwards weights in direct convolution
+- Added fp16 support for RNNs on the HIP backend
+- Improved performance database coverage
+
+Known Issues:
+
+- RNNs do not support fp16
+- OpenCL backend does not support GEMM convolutions in fp16
+- Layer fusions for convolution 1x1 fp16 are not supported
+- Layer fusions for large image 1x1 convolutions may cause an exception instead of a warning during compile phase if plan is not supported
+
+
+### 11/18/2018 [ 1.6.0 ]
+
+- Training in fp16 (half precision) including mixed-precision is now fully supported
+- Batch Normalization in fp16 (half precision) including mixed-precision are now available
+- Performance improvements for 3x3 and 1x1 single-precision convolutions
+- Layer fusions for BatchNorm+Activation are now available
+- Layer fusions with convolutions now support varying strides and padding configurations
+
+Changes: 
+
+- rocBLAS is now used as the default BLAS library for the HIP backend (minimum version 14.3.0)
+- Fixed various bugs in convolution kernels
+- Fixed issues with bad references in layer fusion 
+- Fixed gfx803 assembily issues
+- Added support fp16 Winograd convolutions
+- Added support for fp16 pooling
+- Improved error reporting for convolutions and layer fusions
+- Improved documentation
+
+Known Issues:
+
+- RNNs do not support fp16
+- OpenCL backend does not have full fp16 support
+- Layer fusions for convolution 1x1 fp16 are not supported
+
+
+### 09/14/2018 [ 1.5.0 ]
+
+Notes:
+
+- A new kernel fusion API is now available for inference for convolution, bias, 
+  batch normalization, and activations.
+- This release includes new features and bug fixes
+- Group and Depthwise convolutions are now available
+- 3D Batch Normalization has been implemented for fully packed tensors
+- Dilation for convolutions have been implemented
+
+Changes:
+
+- Fixed bugs in direct convolutions
+- Fixed issue with paths when $HOME variable is not set
+- Fixed padding issues with 1x1 convolutions
+- Added incremental support for fp16
+- Added fused kernels for Winograd and direct with bias and activations
+- Added a getting started guide for kernel fusion.
+- Added group and depthwise API for convolutions
+- Added 3-D batch normalization support with 5-D tensors
+- Improved max pooling performance
+- Improved debug and error reporting information
+- Improved documentation for convolutions
+
+Known Issues:
+
+- RNNs do not support fp16
+- Training with CNNs does not support fp16
+
+
 ### 07/30/2018 [ 1.4.2 ]
 
 Notes: 

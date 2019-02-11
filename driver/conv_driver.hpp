@@ -56,6 +56,7 @@
 #include <numeric>
 #include <sstream>
 #include <vector>
+#include <type_traits>
 
 MIOPEN_DECLARE_ENV_VAR(MIOPEN_DRIVER_PAD_BUFFERS_2M)
 
@@ -217,6 +218,8 @@ class ConvDriver : public Driver
     miopenConvolutionDescriptor_t convDesc;
 
     std::string GetVerificationCacheFileName() const;
+    std::string GetVCacheFwdOutBasename() const;
+    std::string GetVCacheBwdDataBasename() const;
 
     bool TryReadVerificationCache(const std::string& file_name,
                                   miopenTensorDescriptor_t& tensorDesc,
@@ -313,6 +316,11 @@ int ConvDriver<Tgpu, Tref, Tfile>::AddCmdLineArgs()
     inflags.AddInputFlag("dilation_w", 'j', "1", "Dilation of Filter Width (Default=1)", "int");
     inflags.AddInputFlag("in_bias", 'a', "", "Input bias filename (Default=)", "string");
     inflags.AddInputFlag("group_count", 'g', "1", "Number of Groups (Default=1)", "int");
+    inflags.AddInputFlag("dout_data",
+                         'D',
+                         "",
+                         "dy data filename for backward weight computation (Default=)",
+                         "string");
 
     return 0;
 }
@@ -479,6 +487,24 @@ std::vector<int> ConvDriver<Tgpu, Tref, Tfile>::GetOutputTensorLengths()
     return std::vector<int>({n, c, h, w});
 }
 
+namespace detail {
+
+template <typename T>
+T RanGenWeights()
+{
+    return RAN_GEN<T>(static_cast<T>(-0.5), static_cast<T>(0.5));
+}
+
+// Shift FP16 distribution towards positive numbers,
+// otherwise Winograd FP16 validation fails.
+template <>
+float16 RanGenWeights()
+{
+    return RAN_GEN<float16>(static_cast<float16>(-1.0 / 3.0), static_cast<float16>(0.5));
+}
+
+} // namespace detail
+
 template <typename Tgpu, typename Tref, typename Tfile>
 int ConvDriver<Tgpu, Tref, Tfile>::AllocateBuffersAndCopy()
 {
@@ -560,6 +586,7 @@ int ConvDriver<Tgpu, Tref, Tfile>::AllocateBuffersAndCopy()
     std::string inFileName   = inflags.GetValueStr("in_data");
     std::string weiFileName  = inflags.GetValueStr("weights");
     std::string biasFileName = inflags.GetValueStr("in_bias");
+    std::string doutFileName = inflags.GetValueStr("dout_data");
 
     /* Unless seed is persistent between runs validation using cache stored in file is impossible.
      */
@@ -581,9 +608,18 @@ int ConvDriver<Tgpu, Tref, Tfile>::AllocateBuffersAndCopy()
         }
     }
 
-    for(int i = 0; i < out_sz; i++)
+    bool doutRead = false;
+    if(!doutFileName.empty())
     {
-        dout[i] = Data_scale * RAN_GEN<Tgpu>(static_cast<Tgpu>(0.0), static_cast<Tgpu>(1.0));
+        doutRead = readBufferFromFile<Tgpu>(dout.data(), out_sz, doutFileName.c_str());
+    }
+
+    if(!doutRead)
+    {
+        for(int i = 0; i < out_sz; i++)
+        {
+            dout[i] = Data_scale * RAN_GEN<Tgpu>(static_cast<Tgpu>(0.0), static_cast<Tgpu>(1.0));
+        }
     }
 
     if(inflags.GetValueInt("bias") != 0)
@@ -625,7 +661,7 @@ int ConvDriver<Tgpu, Tref, Tfile>::AllocateBuffersAndCopy()
     {
         for(int i = 0; i < wei_sz; i++)
         {
-            wei[i] = Data_scale * RAN_GEN<Tgpu>(static_cast<Tgpu>(-0.5), static_cast<Tgpu>(0.5));
+            wei[i] = Data_scale * detail::RanGenWeights<Tgpu>();
         }
     }
 
@@ -635,7 +671,10 @@ int ConvDriver<Tgpu, Tref, Tfile>::AllocateBuffersAndCopy()
         dumpBufferToFile<Tgpu>("dump_wei.bin", wei.data(), wei_sz);
         if(inflags.GetValueInt("bias") != 0)
             dumpBufferToFile<Tgpu>("dump_bias.bin", b.data(), GetTensorSize(biasTensor));
+
+        dumpBufferToFile<Tgpu>("dump_dout.bin", dout.data(), out_sz);
     }
+
 #if MIOPEN_BACKEND_OPENCL
     cl_int status;
 #elif MIOPEN_BACKEND_HIP
@@ -694,7 +733,13 @@ int ConvDriver<Tgpu, Tref, Tfile>::RunForwardGPU()
 
     FindForward(ret_algo_count, request_algo_count, perf_results);
 
+    if(ret_algo_count == 0)
+        throw std::runtime_error("Find Forward Conv. ret_algo_count == 0");
+
     float alpha = static_cast<float>(1), beta = static_cast<float>(0);
+
+    float kernel_total_time = 0.0;
+    float kernel_first_time = 0.0;
 
     Timer t;
     START_TIME;
@@ -715,20 +760,27 @@ int ConvDriver<Tgpu, Tref, Tfile>::RunForwardGPU()
                                  (workspace_fwd_dev != nullptr) ? workspace_fwd_dev->GetMem()
                                                                 : nullptr,
                                  perf_results[0].memory);
+
+        float time = 0.0;
+        miopenGetKernelTime(GetHandle(), &time);
+        kernel_total_time += time;
+        if(i == 0)
+            kernel_first_time = time;
     }
 
     if(inflags.GetValueInt("time") == 1)
     {
-        float time = 0.0;
-        miopenGetKernelTime(GetHandle(), &time);
-
         STOP_TIME;
         if(WALL_CLOCK)
             printf("Wall-clock Time Forward Conv. Elapsed: %f ms\n",
                    t.gettime_ms() / inflags.GetValueInt("iter"));
 
+        int iter = inflags.GetValueInt("iter");
+        float kernel_average_time =
+            iter > 1 ? (kernel_total_time - kernel_first_time) / (iter - 1) : kernel_first_time;
+
         printf("MIOpen Forward Conv. Algorithm: %d\n", perf_results[0].fwd_algo);
-        printf("GPU Kernel Time Forward Conv. Elapsed: %f ms\n", time);
+        printf("GPU Kernel Time Forward Conv. Elapsed: %f ms (average)\n", kernel_average_time);
     }
 
     if(inflags.GetValueInt("bias") != 0)
@@ -845,7 +897,7 @@ int ConvDriver<Tgpu, Tref, Tfile>::RunForwardCPU()
         }
     }
     if(out_h <= 0 || out_w <= 0)
-        MIOPEN_THROW("Invalid Test Case: Check Output Dimension.");
+        throw std::runtime_error("Invalid Test Case: Check Output Dimension.");
 
     if(mode == miopenConvolution)
     {
@@ -1014,7 +1066,7 @@ int ConvDriver<Tgpu, Tref, Tfile>::RunForwardCPU()
         dumpBufferToFile<Tref>("dump_fwd_out_cpu.bin", outhost.data(), outhost.size());
     }
 
-    TrySaveVerificationCache("fwd_out", outhost);
+    TrySaveVerificationCache(GetVCacheFwdOutBasename(), outhost);
     return 0;
 }
 
@@ -1075,8 +1127,14 @@ int ConvDriver<Tgpu, Tref, Tfile>::RunBackwardGPU()
 
     FindBackwardData(ret_algo_count, request_algo_count, perf_results_data);
 
+    if(ret_algo_count == 0)
+        throw std::runtime_error("Find Backward Data Conv. ret_algo_count == 0");
+
     float alpha = static_cast<float>(1), beta = static_cast<float>(0);
     int ret = 0;
+
+    float kernel_total_time = 0.0;
+    float kernel_first_time = 0.0;
 
     Timer t;
     START_TIME;
@@ -1097,20 +1155,28 @@ int ConvDriver<Tgpu, Tref, Tfile>::RunBackwardGPU()
             din_dev->GetMem(),
             (workspace_bwd_data_dev != nullptr) ? workspace_bwd_data_dev->GetMem() : nullptr,
             perf_results_data[0].memory);
+
+        float time = 0.0;
+        miopenGetKernelTime(GetHandle(), &time);
+        kernel_total_time += time;
+        if(i == 0)
+            kernel_first_time = time;
     }
 
     if(inflags.GetValueInt("time") == 1)
     {
-        float time = 0.0;
-        miopenGetKernelTime(GetHandle(), &time);
-
         STOP_TIME;
         if(WALL_CLOCK)
             printf("Wall-clock Time Backward Data Conv. Elapsed: %f ms\n",
                    t.gettime_ms() / inflags.GetValueInt("iter"));
 
+        int iter = inflags.GetValueInt("iter");
+        float kernel_average_time =
+            iter > 1 ? (kernel_total_time - kernel_first_time) / (iter - 1) : kernel_first_time;
+
         printf("MIOpen Backward Data Conv. Algorithm: %d\n", perf_results_data[0].bwd_data_algo);
-        printf("GPU Kernel Time Backward Data Conv. Elapsed: %f ms\n", time);
+        printf("GPU Kernel Time Backward Data Conv. Elapsed: %f ms (average)\n",
+               kernel_average_time);
     }
 
     din_dev->FromGPU(GetStream(), din.data());
@@ -1118,6 +1184,12 @@ int ConvDriver<Tgpu, Tref, Tfile>::RunBackwardGPU()
     std::vector<miopenConvAlgoPerf_t> perf_results_weights(request_algo_count);
 
     FindBackwardWeights(ret_algo_count, request_algo_count, perf_results_weights);
+
+    if(ret_algo_count == 0)
+        throw std::runtime_error("Find Backward Weights Conv. ret_algo_count == 0");
+
+    kernel_total_time = 0.0;
+    kernel_first_time = 0.0;
 
     START_TIME;
     for(int i = 0; i < inflags.GetValueInt("iter"); i++)
@@ -1136,6 +1208,12 @@ int ConvDriver<Tgpu, Tref, Tfile>::RunBackwardGPU()
             dwei_dev->GetMem(),
             (workspace_bwd_weights_dev != nullptr) ? workspace_bwd_weights_dev->GetMem() : nullptr,
             perf_results_weights[0].memory);
+
+        float time = 0.0;
+        miopenGetKernelTime(GetHandle(), &time);
+        kernel_total_time += time;
+        if(i == 0)
+            kernel_first_time = time;
     }
 
     if(inflags.GetValueInt("time") == 1)
@@ -1148,9 +1226,14 @@ int ConvDriver<Tgpu, Tref, Tfile>::RunBackwardGPU()
             printf("Wall-clock Time Backward Weights Conv. Elapsed: %f ms\n",
                    t.gettime_ms() / inflags.GetValueInt("iter"));
 
+        int iter = inflags.GetValueInt("iter");
+        float kernel_average_time =
+            iter > 1 ? (kernel_total_time - kernel_first_time) / (iter - 1) : kernel_first_time;
+
         printf("MIOpen Backward Weights Conv. Algorithm: %d\n",
                perf_results_weights[0].bwd_weights_algo);
-        printf("GPU Kernel Time Backward Weights Conv. Elapsed: %f ms\n", time);
+        printf("GPU Kernel Time Backward Weights Conv. Elapsed: %f ms (average)\n",
+               kernel_average_time);
     }
     dwei_dev->FromGPU(GetStream(), dwei.data());
 
@@ -1281,7 +1364,7 @@ int ConvDriver<Tgpu, Tref, Tfile>::RunBackwardWeightsCPU()
     }
 
     if(out_h <= 0 || out_w <= 0)
-        MIOPEN_THROW("Invalid Test Case: Check Output Dimension.");
+        throw std::runtime_error("Invalid Test Case: Check Output Dimension.");
 
     if(mode == miopenConvolution)
     {
@@ -1567,7 +1650,7 @@ int ConvDriver<Tgpu, Tref, Tfile>::RunBackwardDataCPU()
     group_count = miopen::deref(convDesc).group_count;
 
     if(out_h <= 0 || out_w <= 0)
-        MIOPEN_THROW("Invalid Test Case: Check Output Dimension.");
+        throw std::runtime_error("Invalid Test Case: Check Output Dimension.");
 
     if(mode == miopenConvolution &&
        ((dilation_h == 1 && dilation_w == 1) || (wei_h == 1 && wei_w == 1)))
@@ -1753,7 +1836,7 @@ int ConvDriver<Tgpu, Tref, Tfile>::RunBackwardDataCPU()
         dumpBufferToFile<Tref>("dump_bwd_din_cpu.bin", din_host.data(), din_host.size());
     }
 
-    TrySaveVerificationCache("bwd_dat", din_host);
+    TrySaveVerificationCache(GetVCacheBwdDataBasename(), din_host);
     return 0;
 }
 
@@ -1785,7 +1868,9 @@ int ConvDriver<Tgpu, Tref, Tfile>::RunBackwardBiasCPU()
             {
                 for(int w = 0; w < out_w; w++)
                 {
-                    if((inflags.GetValueStr("mode")) == "conv")
+                    if((inflags.GetValueStr("mode")) == "conv" ||
+                       (inflags.GetValueStr("mode")) == "group" ||
+                       (inflags.GetValueStr("mode")) == "dw")
                     {
                         db_host[c] += static_cast<Tref>(
                             dout[n * out_nstride + c * out_cstride + h * out_hstride + w]);
@@ -1834,6 +1919,27 @@ std::string ConvDriver<Tgpu, Tref, Tfile>::GetVerificationCacheFileName() const
        << "_" << weiDesc[1] << "x" << pad_h << "x" << pad_w << "x" << u << "x" << v << "x" << sx
        << "x" << sy << "x" << inflags.GetValueInt("pad_val");
 
+    switch(mode)
+    {
+    case miopenConvolution:
+        // Do not encode conv ("normal") mode to maintain compatibility with existing
+        // verification cache files.
+        break;
+    case miopenGroupConv:
+        // Group mode can be distinguished from conv by value of weiDesc[1] (which has group count
+        // included as a multiplier, so we do not need to encode group count at all).
+        break;
+    case miopenDepthwise:
+        // DW mode is essantilly Group mode when number of groups is equal to C.
+        break;
+    case miopenTranspose:
+        // In spite of weiDesc[1] is included into filename, transpose mode cannot be realiably
+        // distinguished from other modes in some corner cases, for example if C==K, 3x3, pad=1x1:
+        // "-c 8 -k 8 -H 57 -W 57 -y 3 -x 3 -p 1 -q 1 -u 1 -v 1 -l 1 -j 1"
+        ss << "mT";
+        break;
+    }
+
     assert(sizeof(Tfile) == 8 || sizeof(Tfile) == 4 || sizeof(Tfile) == 2);
     // Legacy files contain floats and have no prefix.
     if(sizeof(Tfile) != 4)
@@ -1880,10 +1986,25 @@ void ConvDriver<Tgpu, Tref, Tfile>::TrySaveVerificationCache(const std::string& 
 }
 
 template <typename Tgpu, typename Tref, typename Tfile>
+std::string ConvDriver<Tgpu, Tref, Tfile>::GetVCacheFwdOutBasename() const
+{
+    // "_v2" is to ensure compatibility of verification cache. After this commit fp16 weights buffer
+    // will have different data (due to change of random-distribution).
+    return {std::string("fwd_out") + (std::is_same<float16, Tgpu>::value ? "_v2" : "")};
+}
+
+template <typename Tgpu, typename Tref, typename Tfile>
+std::string ConvDriver<Tgpu, Tref, Tfile>::GetVCacheBwdDataBasename() const
+{
+    // Ensure compatibility of verification cache. After this commit fp16 weights buffer
+    // will have different data (due to change of random-distribution).
+    return {std::string("bwd_dat") + (std::is_same<float16, Tgpu>::value ? "_v2" : "")};
+}
+
+template <typename Tgpu, typename Tref, typename Tfile>
 int ConvDriver<Tgpu, Tref, Tfile>::VerifyForward()
 {
-
-    if(!TryReadVerificationCache("fwd_out", outputTensor, outhost.data()))
+    if(!TryReadVerificationCache(GetVCacheFwdOutBasename(), outputTensor, outhost.data()))
     {
         RunForwardCPU();
     }
@@ -1909,7 +2030,7 @@ int ConvDriver<Tgpu, Tref, Tfile>::VerifyBackward()
     const Tref tolerance =
         ((sizeof(Tgpu) == 4) ? static_cast<Tref>(1e-6) : static_cast<Tref>(7e-2));
 
-    if(!TryReadVerificationCache("bwd_dat", inputTensor, din_host.data()))
+    if(!TryReadVerificationCache(GetVCacheBwdDataBasename(), inputTensor, din_host.data()))
     {
         RunBackwardDataCPU();
     }

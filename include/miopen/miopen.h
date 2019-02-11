@@ -100,6 +100,7 @@ typedef enum {
     miopenStatusInternalError  = 5, /*!< MIOpen failure. */
     miopenStatusNotImplemented = 6, /*!< Use of unimplemented feature. */
     miopenStatusUnknownError   = 7, /*!< Unknown error occurred. */
+    miopenStatusUnsupportedOp  = 8, /*!< Unsupported operator for fusion. */
 } miopenStatus_t;
 
 /*! @brief Get character string for an error code.
@@ -288,11 +289,13 @@ MIOPEN_DECLARE_OBJECT(miopenRNNDescriptor);
 
 /*! @ingroup tensor
  * @enum miopenDataType_t
- * MIOpen floating point datatypes. Currently only 32-bit floats are fully supported in MIOpen.
+ * MIOpen floating point datatypes. Both 32-bit and 16-bit floats are supported in MIOpen.
 */
 typedef enum {
     miopenHalf  = 0, /*!< 16-bit floating point (Not supported) */
     miopenFloat = 1, /*!< 32-bit floating point (Fully supported) */
+    miopenInt32 = 2, /*!< 32-bit int point (Not supported) */
+    miopenInt8  = 3, /*!< 8-bit int point (Not supported) */
 } miopenDataType_t;
 
 /*! @ingroup tensor
@@ -393,7 +396,7 @@ MIOPEN_EXPORT miopenStatus_t miopenCreateTensorDescriptor(miopenTensorDescriptor
  * Interface for setting 4-D tensor shape. MIOpen currently only implements NCHW layout.
  *
  * @param tensorDesc Tensor descriptor type (output)
- * @param dataType   Currently only miopenFloat (32-bit floats) is implemented (input)
+ * @param dataType   MIOpen datatype (input)
  * @param n          Mini-batch size (input)
  * @param c          Number of channels (input)
  * @param h          Data height dimension size (input)
@@ -408,7 +411,7 @@ MIOPEN_EXPORT miopenStatus_t miopenSet4dTensorDescriptor(
  * Interface to query the 4-D tensor shape.
  *
  * @param tensorDesc Tensor descriptor type (input)
- * @param dataType   Currently only miopenFloat (32-bit floats) is implemented (output)
+ * @param dataType   MIOpen datatype (input)
  * @param n          Mini-batch size (output)
  * @param c          Number of channels (output)
  * @param h          Data height dimension size (output)
@@ -435,7 +438,7 @@ MIOPEN_EXPORT miopenStatus_t miopenGet4dTensorDescriptor(miopenTensorDescriptor_
  * Interface for setting tensor shape. MIOpen has support for 1, 2, 3, 4, 5 dimensional tensor of
  * layout.
  * @param tensorDesc   Tensor descriptor type (input)
- * @param dataType     Currently only miopenFloat is implemented (input)
+ * @param dataType     MIOpen datatype (input)
  * @param nbDims       Number of dimensions in the dimsA array (input)
  * @param dimsA        Array containing the size of dimensions (input)
  * @param stridesA     Array containing the size of stride (input)
@@ -461,7 +464,7 @@ MIOPEN_EXPORT miopenStatus_t miopenGetTensorDescriptorSize(miopenTensorDescripto
 /*! @brief Get the details of the N-dimensional tensor descriptor.
  *
  * @param tensorDesc Tensor descriptor type (input)
- * @param dataType   Currently only miopenFloat is implemented (output)
+ * @param dataType   MIOpen datatype (input)
  * @param dimsA      Array containing the size of dimensions (output)
  * @param stridesA   Array containing the size of stride (output)
  * @return           miopenStatus_t
@@ -543,6 +546,25 @@ MIOPEN_EXPORT miopenStatus_t miopenScaleTensor(miopenHandle_t handle,
  */
 MIOPEN_EXPORT miopenStatus_t miopenGetTensorNumBytes(miopenTensorDescriptor_t tensorDesc,
                                                      size_t* numBytes);
+
+/*! @brief Copies one tensor to another tensor with a different layout.
+ *
+ * @param handle     MIOpen handle (input)
+ * @param alpha      Floating point scaling factor, allocated on the host (input)
+ * @param xDesc      Source Tensor descriptor for tensor x (input)
+ * @param x          Source Tensor x (input)
+ * @param beta       Floating point scaling factor, allocated on the host (input)
+ * @param yDesc      Destination Tensor descriptor for tensor y (input)
+ * @param y          Destination Tensor y (output)
+ * @return           miopenStatus_t
+ */
+MIOPEN_EXPORT miopenStatus_t miopenTransformTensor(miopenHandle_t handle,
+                                                   const void* alpha,
+                                                   const miopenTensorDescriptor_t xDesc,
+                                                   const void* x,
+                                                   const void* beta,
+                                                   const miopenTensorDescriptor_t yDesc,
+                                                   void* y);
 
 /** @} */
 // CLOSEOUT TENSOR DOXYGEN GROUP
@@ -691,9 +713,9 @@ typedef enum {
 
  * @brief Perf struct for forward, backward filter, or backward data algorithms
  *
- * Contains the union to hold the selected convolution algorithm for forward, or backwards layers.
- * Also contains the time it took to run the algorithm and the workspace required to run the
- * algorithm.
+ * Contains the union to hold the selected convolution algorithm for forward, or backwards layers,
+ * and also contains the time it took to run the algorithm and the workspace required to run the
+ * algorithm. The workspace in this structure can be used when executing the convolution layer.
  */
 typedef struct
 {
@@ -711,9 +733,11 @@ typedef struct
 
 /*! @brief Query the workspace size required for a forward convolution layer
  *
- * This call is required and must be executed before running the findConvolution and before
- * executing convolution layer functions. The maximum size of the memory needed from the set
- * of potential forward convolution algorithms is returned.
+ * This call is required and must be executed once before running
+ * miopenFindConvolutionForwardAlgorithm()
+ * in order to determine the largest required allocation for the algorithm search; i.e., the maximum
+ * size
+ * of the memory needed from the set of potential forward convolution algorithm is returned.
  *
  * If using Group/Depthwise convolution mode, call miopenSetConvolutionGroupCount() before running
  * this.
@@ -791,10 +815,9 @@ miopenFindConvolutionForwardAlgorithm(miopenHandle_t handle,
 
 /*! @brief Execute a forward convolution layer
  *
- * Runs the forward convolution layer based on the selected algorithm. The functions
- * miopenConvolutionForwardGetWorkSpaceSize() and miopenFindConvolutionForwardAlgorithm() must have
- * been executed previously to determine the required memory needed for the workspace and the
- * best convolutional algorithm, respectively.
+ * Runs the forward convolution layer based on the selected algorithm. The function
+ * miopenFindConvolutionForwardAlgorithm() must have been executed previously to
+ * determine the required memory needed for the workspace and the best convolutional algorithm.
  *
  * If using Group/Depthwise convolution mode, call miopenSetConvolutionGroupCount() before running
  * this.
@@ -853,9 +876,9 @@ MIOPEN_EXPORT miopenStatus_t miopenConvolutionForwardBias(miopenHandle_t handle,
  *
  * For a provided tensor descriptors and algorithm selection, this function calculates and returns
  * the workspace size required for back propagation on data. This call is required and must be
- * executed before running the miopenFindConvolutionBackwardDataAlgorithm() and before executing
- * convolution layer functions. The maximum size of the memory needed from the set of potential
- * forward convolution algorithms is returned.
+ * executed once before running miopenFindConvolutionBackwardDataAlgorithm() in order to determine
+ * the largest required allocation for the algorithm search; i.e., the maximum size of the memory
+ * needed from the set of potential backward convolution algorithm is returned.
  *
  * If using Group/Depthwise convolution mode, call miopenSetConvolutionGroupCount() before running
  * this.
@@ -934,9 +957,9 @@ miopenFindConvolutionBackwardDataAlgorithm(miopenHandle_t handle,
 /*! @brief Execute a backward data convolution layer
  *
  * Runs the backward data convolution layer based on the selected algorithm. The function
- * miopenConvolutionBackwardDataGetWorkSpaceSize() and miopenFindConvolutionBackwardDataAlgorithm()
- * must have been executed previously to determine the required memory needed for the workspace and
- * the best convolutional algorithm, respectively.
+ * miopenFindConvolutionBackwardDataAlgorithm() must have been executed previously to
+ * determine the required memory needed for the workspace and the best convolutional
+ * algorithm.
  *
  * If using Group/Depthwise convolution mode, call miopenSetConvolutionGroupCount() before running
  * this.
@@ -973,11 +996,13 @@ miopenConvolutionBackwardData(miopenHandle_t handle,
 
 /*! @brief Get the GPU memory required for the backward weights convolution algorithm.
  *
+ *
  * For a provided tensor descriptors and algorithm selection, this function calculates and returns
- * the workspace size required for back propagation on weights. This call is required and must be
- * executed before running the miopenFindConvolutionBackwardWeightsAlgorithm() and before executing
- * convolution layer functions. The maximum size of the memory needed from the set of potential
- * forward convolution algorithms is returned.
+ * the workspace size required for back propagation on data. This call is required and must be
+ * executed once before running miopenFindConvolutionBackwardWeightsAlgorithm() in order to
+ * determine
+ * the largest required allocation for the algorithm search; i.e., the maximum size of the memory
+ * needed from the set of potential backward weights convolution algorithm is returned.
  *
  * If using Group/Depthwise convolution mode, call miopenSetConvolutionGroupCount() before running
  * this.
@@ -1056,10 +1081,9 @@ miopenFindConvolutionBackwardWeightsAlgorithm(miopenHandle_t handle,
 /*! @brief Execute a backward weights convolution layer
  *
  * Runs the backward weights convolution layer based on the selected algorithm. The function
- * miopenConvolutionBackwardWeightsGetWorkSpaceSize() and
  * miopenFindConvolutionBackwardWeightsAlgorithm() must have
  * been executed previously to determine the required memory needed for the workspace and the
- * best convolutional algorithm, respectively.
+ * best convolutional algorithm.
  *
  * If using Group/Depthwise convolution mode, call miopenSetConvolutionGroupCount() before running
  * this.
@@ -1890,18 +1914,31 @@ MIOPEN_EXPORT miopenStatus_t miopenCreateOpConvForward(miopenFusionPlanDescripto
 
 //---
 
-// Activation create ops ---
+// Activation forward create ops ---
 /*! @brief Creates a forward activation operator.
 *
 * @param fusePlanDesc    A fusion plan descriptor (input)
-* @param activOp         Pointer to an operator type (output)
+* @param activFwdOp         Pointer to an operator type (output)
 * @param mode            Activation version (input)
 * @return                miopenStatus_t
 */
 MIOPEN_EXPORT miopenStatus_t
 miopenCreateOpActivationForward(miopenFusionPlanDescriptor_t fusePlanDesc,
-                                miopenFusionOpDescriptor_t* activOp,
+                                miopenFusionOpDescriptor_t* activFwdOp,
                                 miopenActivationMode_t mode);
+
+// Activation backward create ops ---
+/*! @brief Creates a backward activation operator.
+*
+* @param fusePlanDesc    A fusion plan descriptor (input)
+* @param activBwdOp         Pointer to an operator type (output)
+* @param mode            Activation version (input)
+* @return                miopenStatus_t
+*/
+MIOPEN_EXPORT miopenStatus_t
+miopenCreateOpActivationBackward(miopenFusionPlanDescriptor_t fusePlanDesc,
+                                 miopenFusionOpDescriptor_t* activBwdOp,
+                                 miopenActivationMode_t mode);
 
 // Bias create ops ---
 /*! @brief Creates a forward bias operator.
@@ -1929,6 +1966,33 @@ miopenCreateOpBatchNormInference(miopenFusionPlanDescriptor_t fusePlanDesc,
                                  miopenFusionOpDescriptor_t* bnOp,
                                  const miopenBatchNormMode_t bn_mode,
                                  const miopenTensorDescriptor_t bnScaleBiasMeanVarDesc);
+
+/*! @brief Creates a forward training batch normalization operator.
+*
+* @param fusePlanDesc           A fusion plan descriptor (input)
+* @param bnFwdOp                   Pointer to an operator type (output)
+* @param bn_mode                Batch normalization layer mode (input)
+* @param runningMeanVariance    Toggles whether or not to save population statistics for inference;
+* batch statistic are required (input)
+* @return                       miopenStatus_t
+*/
+MIOPEN_EXPORT miopenStatus_t
+miopenCreateOpBatchNormForward(miopenFusionPlanDescriptor_t fusePlanDesc,
+                               miopenFusionOpDescriptor_t* bnFwdOp,
+                               const miopenBatchNormMode_t bn_mode,
+                               bool runningMeanVariance);
+
+/*! @brief Creates a back propagation batch normalization operator.
+*
+* @param fusePlanDesc           A fusion plan descriptor (input)
+* @param bnBwdOp                   Pointer to an operator type (output)
+* @param bn_mode                Batch normalization layer mode (input)
+* @return                       miopenStatus_t
+*/
+MIOPEN_EXPORT miopenStatus_t
+miopenCreateOpBatchNormBackward(miopenFusionPlanDescriptor_t fusePlanDesc,
+                                miopenFusionOpDescriptor_t* bnBwdOp,
+                                const miopenBatchNormMode_t bn_mode);
 
 //---
 /*! @brief Creates an operator argument object
@@ -1964,6 +2028,7 @@ MIOPEN_EXPORT miopenStatus_t miopenSetOpArgsConvForward(miopenOperatorArgs_t arg
 /*! @brief Sets the arguments for forward activation op
 *
 * @param args    An arguments object type (output)
+* @param activFwdOp   Activation backwards operator (input)
 * @param alpha   Floating point scaling factor, allocated on the host (input)
 * @param beta    Floating point shift factor, allocated on the host (input)
 * @param activAlpha  Double precision activation parameter which depends on activation mode (input)
@@ -1971,13 +2036,39 @@ MIOPEN_EXPORT miopenStatus_t miopenSetOpArgsConvForward(miopenOperatorArgs_t arg
 * @param activGamma  Double precision activation parameter which depends on activation mode (input)
 * @return        miopenStatus_t
 */
-MIOPEN_EXPORT miopenStatus_t miopenSetOpArgsActivForward(miopenOperatorArgs_t args,
-                                                         const miopenFusionOpDescriptor_t activOp,
-                                                         const void* alpha,
-                                                         const void* beta,
-                                                         double activAlpha,
-                                                         double activBeta,
-                                                         double activGamma);
+MIOPEN_EXPORT miopenStatus_t
+miopenSetOpArgsActivForward(miopenOperatorArgs_t args,
+                            const miopenFusionOpDescriptor_t activFwdOp,
+                            const void* alpha,
+                            const void* beta,
+                            double activAlpha,
+                            double activBeta,
+                            double activGamma);
+
+/*! @brief Sets the arguments for backward activation op
+*
+* @param args    An arguments object type (output)
+* @param activBwdOp   Activation backwards operator (input)
+* @param alpha   Floating point scaling factor, allocated on the host (input)
+* @param beta    Floating point shift factor, allocated on the host (input)
+* @param y        Data tensor y, output of activations in the forward direction (input)
+* @param reserved    Data tensor reserved memory space; currently should be nullptr (input)
+* @param activAlpha  Double precision activation parameter which depends on activation mode (input)
+* @param activBeta   Double precision activation parameter which depends on activation mode (input)
+* @param activGamma  Double precision activation parameter which depends on activation mode (input)
+* @return        miopenStatus_t
+*/
+MIOPEN_EXPORT miopenStatus_t
+miopenSetOpArgsActivBackward(miopenOperatorArgs_t args,
+                             const miopenFusionOpDescriptor_t activBwdOp,
+                             const void* alpha,
+                             const void* beta,
+                             const void* y,
+                             const void* reserved,
+                             double activAlpha,
+                             double activBeta,
+                             double activGamma);
+
 // Batch Normalization set arguments ---
 /*! @brief Sets the arguments for inference batch normalization op
 *
@@ -2002,6 +2093,62 @@ miopenSetOpArgsBatchNormInference(miopenOperatorArgs_t args,
                                   const void* estimatedMean,
                                   const void* estimatedVariance,
                                   double epsilon);
+
+/*! @brief Sets the arguments for forward batch normalization op
+*
+* @param args               An arguments object type (output)
+* @param bnOp               Batch normalization forward operator (input)
+* @param alpha              Floating point scaling factor, allocated on the host (input)
+* @param beta               Floating point shift factor, allocated on the host (input)
+* @param bnScale            Pointer to the gamma tensor memory  (input)
+* @param bnBias             Pointer to the beta tensor memory  (input)
+* @param savedMean          Pointer to batch mean memory  (input)
+* @param savedInvVariance   Pointer to batch inverse variance memory  (input)
+* @param runningMean        Pointer to population mean memory  (input)
+* @param runningVariance    Pointer to population variance memory  (input)
+* @param expAvgFactor       Scalar value for control of population statistics (input)
+* @param epsilon            Scalar value for numerical stability (input)
+* @return                   miopenStatus_t
+*/
+MIOPEN_EXPORT miopenStatus_t miopenSetOpArgsBatchNormForward(miopenOperatorArgs_t args,
+                                                             const miopenFusionOpDescriptor_t bnOp,
+                                                             const void* alpha,
+                                                             const void* beta,
+                                                             const void* bnScale,
+                                                             const void* bnBias,
+                                                             void* savedMean,
+                                                             void* savedInvVariance,
+                                                             void* runningMean,
+                                                             void* runningVariance,
+                                                             double expAvgFactor,
+                                                             double epsilon);
+
+/*! @brief Sets the arguments for backward batch normalization op
+*
+* @param args               An arguments object type (output)
+* @param bnOp               Batch normalization forward operator (input)
+* @param alpha              Floating point scaling factor, allocated on the host (input)
+* @param beta               Floating point shift factor, allocated on the host (input)
+* @param x                  Pointer to the forward input tensor memory  (input)
+* @param bnScale            Pointer to the gamma tensor memory  (input)
+* @param bnBias             Pointer to the beta tensor memory  (input)
+* @param resultBnScaleDiff  Pointer to the gamma gradient tensor memory  (output)
+* @param resultBnBiasDiff   Pointer to the beta gradient tensor memory  (output)
+* @param savedMean          Pointer to batch mean memory  (input)
+* @param savedInvVariance   Pointer to batch inverse variance memory  (input)
+* @return                   miopenStatus_t
+*/
+MIOPEN_EXPORT miopenStatus_t miopenSetOpArgsBatchNormBackward(miopenOperatorArgs_t args,
+                                                              const miopenFusionOpDescriptor_t bnOp,
+                                                              const void* alpha,
+                                                              const void* beta,
+                                                              const void* x,
+                                                              const void* bnScale,
+                                                              const void* bnBias,
+                                                              void* resultBnScaleDiff,
+                                                              void* resultBnBiasDiff,
+                                                              const void* savedMean,
+                                                              const void* savedInvVariance);
 
 // Bias forward set arguments ---
 /*! @brief Sets the arguments for forward bias op
@@ -2050,8 +2197,8 @@ miopenExecuteFusionPlan(const miopenHandle_t handle,
 * RNN mode selection for rnn layer preference
 */
 typedef enum {
-    miopenRNNRELU = 0, /*!< RNN ReLU activation */
-    miopenRNNTANH = 1, /*!< RNN tanh activation */
+    miopenRNNRELU = 0, /*!< RNN with ReLU activation */
+    miopenRNNTANH = 1, /*!< RNN with tanh activation */
     miopenLSTM    = 2, /*!< LSTM */
     miopenGRU     = 3, /*!< GRU */
 } miopenRNNMode_t;
@@ -2226,7 +2373,7 @@ MIOPEN_EXPORT miopenStatus_t miopenGetRNNParamsSize(miopenHandle_t handle,
  * @param rnnDesc         Fully populated RNN layer descriptor type (input)
  * @param xDesc           A previously populated tensor descriptor (input)
  * @param wDesc           A previously allocated tensor descriptor (output)
- * @param dtype           MIOpen data type enum (input)
+ * @param dtype           MIOpen data type enum, currently only fp32 is supported (input)
  * @return                miopenStatus_t
 */
 MIOPEN_EXPORT miopenStatus_t miopenGetRNNParamsDescriptor(miopenHandle_t handle,

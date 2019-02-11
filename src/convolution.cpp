@@ -44,8 +44,7 @@ ConvolutionDescriptor::ConvolutionDescriptor(
       dilation_w(p_dilation_w),
       group_count(1)
 {
-    if(pad_h < 0 || pad_w < 0 || u <= 0 || v <= 0 || dilation_h <= 0 || dilation_w <= 0 ||
-       (dilation_h != dilation_w))
+    if(pad_h < 0 || pad_w < 0 || u <= 0 || v <= 0 || dilation_h <= 0 || dilation_w <= 0)
     {
         MIOPEN_THROW(miopenStatusBadParm,
                      "Invalid parameters, check usage. MIOPEN expects padding "
@@ -72,8 +71,7 @@ ConvolutionDescriptor::ConvolutionDescriptor(miopenConvolutionMode_t c_mode,
       dilation_w(p_dilation_w),
       group_count(1)
 {
-    if(pad_h < 0 || pad_w < 0 || u <= 0 || v <= 0 || dilation_h <= 0 || dilation_w <= 0 ||
-       (dilation_h != dilation_w))
+    if(pad_h < 0 || pad_w < 0 || u <= 0 || v <= 0 || dilation_h <= 0 || dilation_w <= 0)
     {
         MIOPEN_THROW(miopenStatusBadParm,
                      "Invalid parameters, check usage. MIOPEN expects padding "
@@ -173,9 +171,11 @@ ConvolutionDescriptor::GetForwardOutputDim(const TensorDescriptor& inputTensorDe
         {
             output_c = filter_c;
             output_h = std::max<std::ptrdiff_t>(
-                1, u * (input_h - 1) + 1 + dilation_h * (filter_h - 1.0) - 2 * pad_h);
+                1,
+                std::ptrdiff_t(u * (input_h - 1) + 1 + dilation_h * (filter_h - 1.0) - 2 * pad_h));
             output_w = std::max<std::ptrdiff_t>(
-                1, v * (input_w - 1) + 1 + dilation_w * (filter_w - 1.0) - 2 * pad_w);
+                1,
+                std::ptrdiff_t(v * (input_w - 1) + 1 + dilation_w * (filter_w - 1.0) - 2 * pad_w));
         }
         else
         {
@@ -190,13 +190,6 @@ ConvolutionDescriptor::GetForwardOutputDim(const TensorDescriptor& inputTensorDe
         MIOPEN_THROW(miopenStatusInvalidValue, "Invalid Padding Mode!");
 
     return std::make_tuple(input_n, output_c, output_h, output_w);
-
-    //	return std::make_tuple(
-    //		input_n,
-    //		filter_k,
-    //		std::max(1, (input_h - filter_h + 2*pad_h) / u + 1),
-    //		std::max(1, (input_w - filter_w + 2*pad_w) / v + 1)
-    //	);
 }
 
 size_t ConvolutionDescriptor::ForwardGetWorkSpaceSizeGEMM(Handle& handle,
@@ -217,11 +210,8 @@ size_t ConvolutionDescriptor::ForwardGetWorkSpaceSizeGEMM(Handle& handle,
         return 0;
     }
 
-    // gfx803 devices have 4gb-6gb memory
-    if(workspace_size > (1 << 30) && handle.GetDeviceName() == "gfx803")
-    {
-        workspace_size = 0;
-    }
+    if(workspace_size > handle.GetMaxMemoryAllocSize())
+        return 0;
 
     return workspace_size;
 }
@@ -258,6 +248,8 @@ bool ConvolutionDescriptor::IsWinograd3x3Supported(Handle& handle,
         // Right now this does not matter as there is none perf filtering for Winograd
         return false;
     }
+    if(mode != miopenConvolution)
+        return false;
 
     const auto device_name       = handle.GetDeviceName();
     const auto max_compute_units = handle.GetMaxComputeUnits();
@@ -289,33 +281,13 @@ bool ConvolutionDescriptor::IsWinograd3x3Supported(Handle& handle,
            (GetTypeSize(xDesc.GetType()) == 4);
 }
 
-bool ConvolutionDescriptor::IsBwdWeightsDirectSupported(const TensorDescriptor& wDesc) const
-{
-    int k, c, _kernel_size0, _kernel_size1;
-    std::tie(k, c, _kernel_size0, _kernel_size1) = tien<4>(wDesc.GetLengths());
-
-    bool supported_filters =
-        ((_kernel_size0 == 1 && _kernel_size1 == 1) || (_kernel_size0 == 3 && _kernel_size1 == 3) ||
-         (_kernel_size0 == 5 && _kernel_size1 == 5) || (_kernel_size0 == 7 && _kernel_size1 == 7) ||
-         (_kernel_size0 == 9 && _kernel_size1 == 9) ||
-         (_kernel_size0 == 11 && _kernel_size1 == 11) ||
-         (_kernel_size0 == 5 && _kernel_size1 == 10 && u == 2 && v == 2 && pad_h == 0 &&
-          pad_w == 0) ||
-         (_kernel_size0 == 5 && _kernel_size1 == 20 && u == 2 && v == 2 && pad_h == 0 &&
-          pad_w == 0));
-
-    bool workarounds =
-        //        (((_kernel_size0 == 1 && _kernel_size1 == 1 && ((c & 0xF) > 0 || (k & 0xF) > 0)))
-        //        ||
-        ((_kernel_size0 == 1 && _kernel_size1 == 1 && (u > 2 || v > 2)) ||
-         (_kernel_size0 == 3 && _kernel_size1 == 3 && (u > 2 || v > 2)) ||
-         (_kernel_size0 % 2 == 0 && _kernel_size1 % 2 == 0));
-
-    return (supported_filters && !workarounds);
-}
-
+/// \todo GET RID OF THIS FUNCTION. --atamazov
+/// At least, this function must be re-implemented by leveraging
+/// IsApplicable() from respective Solvers.
 bool ConvolutionDescriptor::IsDirectSupported(const TensorDescriptor& wDesc) const
 {
+    if(mode != miopenConvolution)
+        return true;
 
     int k, c, _kernel_size0, _kernel_size1;
     std::tie(k, c, _kernel_size0, _kernel_size1) = tien<4>(wDesc.GetLengths());
@@ -344,7 +316,11 @@ size_t ConvolutionDescriptor::ForwardGetWorkSpaceSize(Handle& handle,
 {
     MIOPEN_LOG_I2("");
     if(mode == miopenTranspose)
+#if MIOPEN_USE_GEMM
         return BackwardDataGetWorkSpaceSizeGEMM(handle, wDesc, xDesc);
+#else
+        return 0;
+#endif
     else
     {
         int wei_h, wei_w;
@@ -360,6 +336,7 @@ size_t ConvolutionDescriptor::ForwardGetWorkSpaceSize(Handle& handle,
         const size_t direct_workspace =
             ForwardBackwardDataGetWorkSpaceSizeDirect(handle, xDesc, yDesc, wDesc, 1);
 
+#if MIOPEN_USE_GEMM
         // Use transpose path if input ht and width <= 14 for 1x1_stride=1 convolutions OR for
         // 1x1_stride=2
         if((wei_h == 1 && wei_w == 1 && pad_h == 0 && pad_w == 0) &&
@@ -370,6 +347,7 @@ size_t ConvolutionDescriptor::ForwardGetWorkSpaceSize(Handle& handle,
         if(dilation_w > 1 || dilation_h > 1)
             return std::max((groups * ForwardGetWorkSpaceSizeGEMM(handle, wDesc, yDesc)),
                             direct_workspace);
+#endif
 
         // Check if Winograd is available
         // If Winograd is present, there is no advantage in letting
@@ -382,8 +360,13 @@ size_t ConvolutionDescriptor::ForwardGetWorkSpaceSize(Handle& handle,
         }
         else
         {
-            size_t workspace_size_gemm = groups * ForwardGetWorkSpaceSizeGEMM(handle, wDesc, yDesc);
-            size_t workspace_size_fft  = ForwardGetWorkSpaceSizeFFT(wDesc, xDesc, yDesc);
+            size_t workspace_size_gemm = 0;
+#if MIOPEN_USE_GEMM
+            workspace_size_gemm = groups * ForwardGetWorkSpaceSizeGEMM(handle, wDesc, yDesc);
+#else
+            (void)groups;
+#endif
+            size_t workspace_size_fft = ForwardGetWorkSpaceSizeFFT(wDesc, xDesc, yDesc);
 
             return std::max(std::max(workspace_size_fft, workspace_size_gemm), direct_workspace);
         }
@@ -397,7 +380,11 @@ size_t ConvolutionDescriptor::BackwardDataGetWorkSpaceSize(Handle& handle,
 {
     MIOPEN_LOG_I2("");
     if(mode == miopenTranspose)
+#if MIOPEN_USE_GEMM
         return ForwardGetWorkSpaceSizeGEMM(handle, wDesc, dxDesc);
+#else
+        return 0;
+#endif
     else
     {
         int wei_h, wei_w;
@@ -411,6 +398,7 @@ size_t ConvolutionDescriptor::BackwardDataGetWorkSpaceSize(Handle& handle,
         const size_t direct_workspace =
             ForwardBackwardDataGetWorkSpaceSizeDirect(handle, dxDesc, dyDesc, wDesc, 0);
 
+#if MIOPEN_USE_GEMM
         if(wei_h == 1 && wei_w == 1 && pad_h == 0 && pad_w == 0 && (u == 2 && v == 2))
         {
             size_t gemm_trans = BackwardDataGetWorkSpaceSizeGEMMTranspose(dyDesc, dxDesc);
@@ -419,6 +407,7 @@ size_t ConvolutionDescriptor::BackwardDataGetWorkSpaceSize(Handle& handle,
         if(dilation_w > 1 || dilation_h > 1)
             return std::max((groups * BackwardDataGetWorkSpaceSizeGEMM(handle, wDesc, dyDesc)),
                             direct_workspace);
+#endif
 
         // Check if Winograd is available
         // If Winograd is present, there is no advantage in letting
@@ -431,8 +420,10 @@ size_t ConvolutionDescriptor::BackwardDataGetWorkSpaceSize(Handle& handle,
         }
         else
         {
-            size_t workspace_size_gemm =
-                groups * BackwardDataGetWorkSpaceSizeGEMM(handle, wDesc, dyDesc);
+            size_t workspace_size_gemm = 0;
+#if MIOPEN_USE_GEMM
+            workspace_size_gemm = groups * BackwardDataGetWorkSpaceSizeGEMM(handle, wDesc, dyDesc);
+#endif
             size_t workspace_size_fft = BackwardGetWorkSpaceSizeFFT(wDesc, dyDesc, dxDesc);
 
             return std::max(std::max(workspace_size_fft, workspace_size_gemm), direct_workspace);
@@ -574,11 +565,8 @@ size_t ConvolutionDescriptor::BackwardDataGetWorkSpaceSizeGEMM(Handle& handle,
         return 0;
     }
 
-    // gfx803 devices have limited memory
-    // TODO: be graceful, need to ensure we can execute a config on the GPU
-    // what if both the algos require > (1 << 30) memory
-    if(handle.GetDeviceName() == "gfx803" && gemm_size > (1 << 30))
-        gemm_size = 0;
+    if(gemm_size > handle.GetMaxMemoryAllocSize())
+        return 0;
 
     return gemm_size;
 }
@@ -614,11 +602,8 @@ size_t ConvolutionDescriptor::BackwardWeightsGetWorkSpaceSizeGEMM(
         return 0;
     }
 
-    // gfx803 devices have limited memory
-    // TODO: be graceful, need to ensure we can execute a config on the GPU
-    // what if both the algos require > (1 << 30) memory
-    if(handle.GetDeviceName() == "gfx803" && gemm_size > (1 << 30))
-        gemm_size = 0;
+    if(gemm_size > handle.GetMaxMemoryAllocSize())
+        return 0;
 
     return gemm_size;
 }
@@ -638,8 +623,6 @@ size_t ConvolutionDescriptor::ForwardBackwardDataGetWorkSpaceSizeDirect(
     construct_params.setDoSearch(false);
     construct_params.setStream(&handle);
     construct_params.setWorkaroundDisableSearchEnforce(true);
-    if(mode == miopenGroupConv || mode == miopenDepthwise)
-        construct_params.setGroupConvCounts(group_count);
 
     try
     {
@@ -672,7 +655,6 @@ ConvolutionDescriptor::BackwardWeightsGetWorkSpaceSizeDirect(Handle& handle,
     construct_params.setDoSearch(false);
     construct_params.setStream(&handle);
     construct_params.setWorkaroundDisableSearchEnforce(true);
-
     try
     {
         const auto ss = FindAllSolutions(construct_params);
@@ -705,11 +687,27 @@ size_t ConvolutionDescriptor::ConvolutionBackwardWeightsGetWorkSpaceSize(
         groups = xDesc.GetLengths()[1];
     else if(mode == miopenGroupConv)
         groups = group_count;
-    if(mode == miopenTranspose)
-        return BackwardWeightsGetWorkSpaceSizeGEMM(handle, xDesc, dwDesc);
 
-    return std::max(BackwardWeightsGetWorkSpaceSizeDirect(handle, dyDesc, xDesc, dwDesc),
-                    (groups * BackwardWeightsGetWorkSpaceSizeGEMM(handle, dyDesc, dwDesc)));
+    size_t workspace_size = 0;
+    if(mode == miopenTranspose)
+    {
+        workspace_size = BackwardWeightsGetWorkSpaceSizeGEMM(handle, xDesc, dwDesc);
+    }
+    else
+    {
+        size_t workspace_size_gemm = 0;
+#if MIOPEN_USE_GEMM
+        workspace_size_gemm =
+            (groups * BackwardWeightsGetWorkSpaceSizeGEMM(handle, dyDesc, dwDesc));
+#else
+        (void)groups;
+#endif
+        workspace_size =
+            std::max(BackwardWeightsGetWorkSpaceSizeDirect(handle, dyDesc, xDesc, dwDesc),
+                     workspace_size_gemm);
+    }
+
+    return workspace_size;
 }
 
 std::ostream& operator<<(std::ostream& stream, const ConvolutionDescriptor& c)
