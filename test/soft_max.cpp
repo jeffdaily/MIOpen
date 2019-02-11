@@ -45,7 +45,7 @@
 struct verify_forward_sofmax
 {
     template <class T>
-    tensor<T> cpu(const tensor<T>& input)
+    tensor<T> cpu(const tensor<T>& input) const
     {
         auto out = input;
         std::fill(out.begin(), out.end(), 0);
@@ -57,7 +57,7 @@ struct verify_forward_sofmax
             T max_c = std::numeric_limits<T>::lowest();
             ford(in_c)([&](int w) { max_c = std::max(max_c, input(o, w, i, j)); });
 
-            T sum = 0;
+            double sum = 0;
             ford(in_c)([&](int w) { sum += std::exp(input(o, w, i, j) - max_c); });
 
             ford(in_c)([&](int w) { out(o, w, i, j) = std::exp(input(o, w, i, j) - max_c) / sum; });
@@ -67,7 +67,7 @@ struct verify_forward_sofmax
     }
 
     template <class T>
-    tensor<T> gpu(const tensor<T>& input)
+    tensor<T> gpu(const tensor<T>& input) const
     {
         auto&& handle = get_handle();
         auto out      = input;
@@ -83,7 +83,7 @@ struct verify_forward_sofmax
     }
 
     template <class T>
-    void fail(float, const tensor<T>& input)
+    void fail(float, const tensor<T>& input) const
     {
         std::cout << "Forward Sofmax: " << std::endl;
         std::cout << "Input tensor: " << input.desc.ToString() << std::endl;
@@ -93,7 +93,7 @@ struct verify_forward_sofmax
 struct verify_backward_sofmax
 {
     template <class T>
-    tensor<T> cpu(const tensor<T>& out, const tensor<T>& dout)
+    tensor<T> cpu(const tensor<T>& out, const tensor<T>& dout) const
     {
         auto input = dout;
 
@@ -101,7 +101,7 @@ struct verify_backward_sofmax
         std::tie(in_n, in_c, in_h, in_w) = miopen::tien<4>(input.desc.GetLengths());
 
         par_ford(in_n, in_h, in_w)([&](int o, int i, int j) {
-            T sum = 0;
+            double sum = 0;
             ford(in_c)([&](int c) { sum += out(o, c, i, j) * dout(o, c, i, j); });
 
             ford(in_c)(
@@ -111,7 +111,7 @@ struct verify_backward_sofmax
     }
 
     template <class T>
-    tensor<T> gpu(const tensor<T>& out, const tensor<T>& dout)
+    tensor<T> gpu(const tensor<T>& out, const tensor<T>& dout) const
     {
         auto&& handle = get_handle();
         auto input    = dout;
@@ -129,7 +129,7 @@ struct verify_backward_sofmax
     }
 
     template <class T>
-    void fail(float, const tensor<T>& output, const tensor<T>&)
+    void fail(float, const tensor<T>& output, const tensor<T>&) const
     {
         std::cout << "Backward Sofmax: " << std::endl;
         std::cout << "Output tensor: " << output.desc.ToString() << std::endl;
@@ -141,7 +141,12 @@ struct softmax_driver : test_driver
 {
     tensor<T> input;
 
-    softmax_driver() { add(input, "input", get_input_tensor()); }
+    softmax_driver()
+    {
+        add(input,
+            "input",
+            get_input_tensor(tensor_elem_gen_integer{miopen_type<T>{} == miopenHalf ? 5 : 17}));
+    }
 
     void run()
     {
@@ -156,4 +161,4 @@ struct softmax_driver : test_driver
     }
 };
 
-int main(int argc, const char* argv[]) { test_drive<softmax_driver<float>>(argc, argv); }
+int main(int argc, const char* argv[]) { test_drive<softmax_driver>(argc, argv); }

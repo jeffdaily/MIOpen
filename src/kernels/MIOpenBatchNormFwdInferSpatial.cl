@@ -24,10 +24,33 @@
  *
  *******************************************************************************/
 
+#define PPCAT_NX(A, B) A##B
+#define PPCAT(A, B) PPCAT_NX(A, B)
+#define TWO 2
+#define FOUR 4
+#define EIGHT 8
+
+#if MIOPEN_USE_FP16 == 1
+#pragma OPENCL EXTENSION cl_khr_fp16 : enable
+#define _FLOAT half
+#ifndef HALF_MAX
+#define MAX_VAL 65504 /* max value */
+#else
+#define MAX_VAL HALF_MAX
+#endif
+#endif
+#if MIOPEN_USE_FP32 == 1
 #define _FLOAT float
-#define _FLOAT2 float2
-#define _FLOAT4 float4
-#define _FLOAT8 float8
+#ifndef FLT_MAX
+#define MAX_VAL 3.402823466e+38F /* max value */
+#else
+#define MAX_VAL FLT_MAX
+#endif
+#endif
+
+#define _FLOAT2 PPCAT(_FLOAT, TWO)
+#define _FLOAT4 PPCAT(_FLOAT, FOUR)
+#define _FLOAT8 PPCAT(_FLOAT, EIGHT)
 
 #ifndef MIO_BN_N
 #define MIO_BN_N 1
@@ -67,13 +90,13 @@
 #endif
 
 __attribute__((reqd_work_group_size(MIO_BN_GRP0, MIO_BN_GRP1, MIO_BN_GRP2))) __kernel void
-BatchNormFwdInferSpatialEst(const __global _FLOAT* __restrict in, /* x input */
-                            __global _FLOAT* __restrict out,      /* y output */
-                            const __global _FLOAT* __restrict estimatedMean,
-                            const __global _FLOAT* __restrict estimatedVariance,
-                            const __global _FLOAT* __restrict scale,
-                            const __global _FLOAT* __restrict bias,
-                            double epsilon)
+MIOpenBatchNormFwdInferSpatialEst(const __global _FLOAT* __restrict in, /* x input */
+                                  __global _FLOAT* __restrict out,      /* y output */
+                                  const __global _FLOAT* __restrict estimatedMean,
+                                  const __global _FLOAT* __restrict estimatedVariance,
+                                  const __global _FLOAT* __restrict scale,
+                                  const __global _FLOAT* __restrict bias,
+                                  double epsilon)
 {
 
     int xgid = get_global_id(0);

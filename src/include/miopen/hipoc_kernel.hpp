@@ -31,7 +31,9 @@
 #include <miopen/errors.hpp>
 #include <miopen/hipoc_program.hpp>
 #include <miopen/stringutils.hpp>
+#include <miopen/op_kernel_args.hpp>
 #include <vector>
+#include <memory.h>
 
 namespace miopen {
 
@@ -138,6 +140,26 @@ struct HIPOCKernelInvoke
         : stream(pstream), fun(pfun), ldims(pldims), gdims(pgdims), name(pname), callback(pcallback)
     {
     }
+    void operator()(std::vector<OpKernelArg>& any_args) const
+    {
+        char hip_args[256] = {0};
+        auto sz_left       = any_args[0].size();
+
+        memcpy(hip_args, &(any_args[0].buffer[0]), any_args[0].size());
+        //        copy_arg(any_args[0], hip_args, 0);
+
+        for(auto idx = 1; idx < any_args.size(); idx++)
+        {
+            auto& any_arg    = any_args[idx];
+            int alignment    = any_arg.size();
+            int padding      = (alignment - (sz_left % alignment)) % alignment;
+            int second_index = sz_left + padding;
+            memcpy(hip_args + second_index, &(any_arg.buffer[0]), any_arg.size());
+            // copy_arg(any_arg, hip_args, second_index);
+            sz_left = second_index + alignment;
+        }
+        run(hip_args, sz_left);
+    }
 
     template <class... Ts>
     void operator()(Ts... xs) const
@@ -177,7 +199,9 @@ struct HIPOCKernel
         kernel_module = name;
         auto status   = hipModuleGetFunction(&fun, program.GetModule(), kernel_module.c_str());
         if(hipSuccess != status)
-            MIOPEN_THROW_HIP_STATUS(status, "Failed to get function: " + kernel_module);
+            MIOPEN_THROW_HIP_STATUS(status,
+                                    "Failed to get function: " + kernel_module + " from " +
+                                        program.GetBinary().string());
     }
 
     HIPOCKernelInvoke Invoke(hipStream_t stream,

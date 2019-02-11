@@ -123,7 +123,8 @@ static int FindFFTKernel(Handle& handle,
                          const TensorDescriptor& yDesc,
                          size_t workSpaceSize,
                          std::vector<KernelInvoke>& kernels,
-                         bool fwd)
+                         bool fwd,
+                         std::string* kcache_key = nullptr)
 {
 
     if(workSpaceSize == 0)
@@ -131,6 +132,10 @@ static int FindFFTKernel(Handle& handle,
 
     // disable running any FFT based convolutions by checking this env variable
     if(miopen::IsDisabled(MIOPEN_DEBUG_CONV_FFT{}))
+        return -1;
+
+    if(xDesc.GetType() != miopenFloat || wDesc.GetType() != miopenFloat ||
+       yDesc.GetType() != miopenFloat)
         return -1;
 
     int in_n, in_c, in_h, in_w;
@@ -220,9 +225,9 @@ static int FindFFTKernel(Handle& handle,
         if((out_n * out_c >= 64) && ((out_n * out_c) % 32 == 0))
             ot_tranpose_choice = 1;
 
-        int in_tranpose_bwidth = in_tranpose_choice ? 32 : 16;
-        int wt_tranpose_bwidth = wt_tranpose_choice ? 32 : 16;
-        int ot_tranpose_bwidth = ot_tranpose_choice ? 32 : 16;
+        int in_tranpose_bwidth = in_tranpose_choice != 0 ? 32 : 16;
+        int wt_tranpose_bwidth = wt_tranpose_choice != 0 ? 32 : 16;
+        int ot_tranpose_bwidth = ot_tranpose_choice != 0 ? 32 : 16;
 
         local_work_size[2][0] = 256;
         global_work_size[2][0] =
@@ -302,6 +307,9 @@ static int FindFFTKernel(Handle& handle,
 
     const std::string config_prefix = make_config_prefix(in_h, in_w, in_n, in_c, out_c);
 
+    if(kcache_key != nullptr)
+        *kcache_key = config_prefix;
+
     for(int ik = 0; ik < NumKernels; ik++)
     {
         std::string kernel_name;
@@ -322,6 +330,7 @@ static int FindFFTKernel(Handle& handle,
         case 4: kernel_name += "MIOpenConvFFT_cgemm"; break;
         case 5: kernel_name += "MIOpenConvFFT_transpose_out"; break;
         case 6: kernel_name += "MIOpenConvFFT_inv_out"; break;
+        default: assert(false);
         }
 
         std::string network_config = config_prefix + std::to_string(ik);
@@ -338,7 +347,7 @@ static int FindFFTKernel(Handle& handle,
         vgd[2] = global_work_size[ik][2];
 
         auto k =
-            handle.GetKernel(algorithm, network_config, program_name, kernel_name, vld, vgd, parms);
+            handle.AddKernel(algorithm, network_config, program_name, kernel_name, vld, vgd, parms);
 
         kernels.push_back(k);
     }
@@ -351,10 +360,11 @@ int ConvolutionDescriptor::FindFwdFFTKernel(Handle& handle,
                                             const TensorDescriptor& wDesc,
                                             const TensorDescriptor& yDesc,
                                             size_t workSpaceSize,
-                                            std::vector<KernelInvoke>& kernels) const
+                                            std::vector<KernelInvoke>& kernels,
+                                            std::string& kcache_key) const
 {
 
-    return FindFFTKernel(handle, xDesc, wDesc, yDesc, workSpaceSize, kernels, true);
+    return FindFFTKernel(handle, xDesc, wDesc, yDesc, workSpaceSize, kernels, true, &kcache_key);
 }
 
 int ConvolutionDescriptor::FindBwdFFTKernel(Handle& handle,
@@ -436,6 +446,7 @@ static float ExecuteFFTKernel(Handle& handle,
         break;
         case 5: k(workSpace); break;
         case 6: k(workSpace, y); break;
+        default: assert(false);
         }
 
         if(timed)

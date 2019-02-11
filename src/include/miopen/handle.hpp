@@ -29,16 +29,33 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <miopen/config.h>
 #include <miopen/common.hpp>
 #include <miopen/kernel.hpp>
 #include <miopen/miopen.h>
 #include <miopen/object.hpp>
 #include <miopen/allocator.hpp>
+#include <miopen/simple_hash.hpp>
+#include <boost/range/adaptor/transformed.hpp>
 #include <vector>
+#include <unordered_map>
+
+#if MIOPEN_USE_ROCBLAS
+#include <miopen/manage_ptr.hpp>
+#include <rocblas.h>
+#endif
 
 namespace miopen {
 
 struct HandleImpl;
+#if MIOPEN_USE_MIOPENGEMM
+struct GemmGeometry;
+using GemmKey = std::pair<std::string, std::string>;
+#endif
+
+#if MIOPEN_USE_ROCBLAS
+using rocblas_handle_ptr = MIOPEN_MANAGE_PTR(rocblas_handle, rocblas_destroy_handle);
+#endif
 
 struct Handle : miopenHandle
 {
@@ -63,15 +80,38 @@ struct Handle : miopenHandle
     float GetKernelTime() const;
     bool IsProfilingEnabled() const;
 
-    KernelInvoke GetKernel(const std::string& algorithm,
+    KernelInvoke AddKernel(const std::string& algorithm,
                            const std::string& network_config,
                            const std::string& program_name,
                            const std::string& kernel_name,
                            const std::vector<size_t>& vld,
                            const std::vector<size_t>& vgd,
-                           const std::string& params);
+                           const std::string& params,
+                           std::size_t cache_index = 0);
 
-    KernelInvoke GetKernel(const std::string& algorithm, const std::string& network_config);
+    bool HasKernel(const std::string& algorithm, const std::string& network_config) const;
+
+    void ClearKernels(const std::string& algorithm, const std::string& network_config);
+
+    auto GetKernels(const std::string& algorithm, const std::string& network_config)
+    {
+        return this->GetKernelsImpl(algorithm, network_config) |
+               boost::adaptors::transformed([this](Kernel k) { return this->Run(k); });
+    }
+    KernelInvoke GetKernel(const std::string& algorithm, const std::string& network_config)
+    {
+        auto ks = this->GetKernelsImpl(algorithm, network_config);
+        if(ks.empty())
+        {
+            MIOPEN_THROW("looking for default kernel (does not exist): " + algorithm + ", " +
+                         network_config);
+        }
+        return this->Run(ks.front());
+    }
+
+    KernelInvoke Run(Kernel k);
+    const std::vector<Kernel>& GetKernelsImpl(const std::string& algorithm,
+                                              const std::string& network_config);
 
     Program LoadProgram(const std::string& program_name, std::string params, bool is_kernel_str);
 
@@ -117,7 +157,27 @@ struct Handle : miopenHandle
         return result;
     }
 
+    std::string GetDbPathFilename()
+    {
+        // clang-format off
+        return GetDeviceName()
+             + "_"
+             + std::to_string(GetMaxComputeUnits());
+        // clang-format on
+    }
+
+#if MIOPEN_USE_ROCBLAS
+    rocblas_handle_ptr CreateRocblasHandle() const;
+#endif
+
     std::unique_ptr<HandleImpl> impl;
+#if MIOPEN_USE_MIOPENGEMM
+    std::unordered_map<GemmKey, std::unique_ptr<GemmGeometry>, SimpleHash> geo_map;
+#endif
+
+#if MIOPEN_USE_ROCBLAS
+    rocblas_handle_ptr rhandle;
+#endif
 };
 } // namespace miopen
 MIOPEN_DEFINE_OBJECT(miopenHandle, miopen::Handle);

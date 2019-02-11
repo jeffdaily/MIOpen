@@ -97,6 +97,23 @@ sequence_t<F> sequence(F f)
     return {std::move(f)};
 }
 
+template <typename F, std::size_t N>
+void repeat_n(F f, std::integral_constant<std::size_t, N>)
+{
+    auto fs = [&f](auto... is) { return each_args(f, is...); };
+    sequence(fs)(std::integral_constant<std::size_t, N>{});
+}
+
+template <class T>
+struct cast_to
+{
+    template <class X>
+    T operator()(X&& x) const
+    {
+        return static_cast<T>(std::forward<X>(x));
+    }
+};
+
 } // namespace miopen
 
 #endif

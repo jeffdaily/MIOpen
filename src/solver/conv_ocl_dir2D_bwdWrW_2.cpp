@@ -32,15 +32,29 @@ namespace solver {
 
 bool ConvOclBwdWrW2::IsApplicable(const ConvolutionContext& params) const
 {
-    // FIE ME:  it sounds a bug to enable kernel_size1x1 from original condition
-    if(params.kernel_size0 == 1 && params.kernel_size1 == 1)
-        return false;
+    bool solution = true;
 
-    return ((params.kernel_size0 >= params.kernel_size1) &&
-            ((params.kernel_stride0 > 1 || params.kernel_stride1 > 1) ||
-             (params.kernel_size0 > 5) || (params.kernel_size0 == 5 && params.in_width >= 64))) ||
-           ((params.pad0 == 0 || params.pad1 == 0) &&
-            (params.kernel_size0 != 1 || params.kernel_size1 != 1));
+    solution &= params.kernel_dilation0 == 1 && params.kernel_dilation1 == 1;
+
+#if 0
+    // TODO: chao: revisit this if failure is encountered.
+    // There is a stronger restriction than this one, which make this one unnecessary.
+    // The kernel read stripes (in height direction, one stripe at a time) of input into LDS,
+    // the height of stripe is (MLO_N_ALIGNED_OUT_SCAN_BLK - 1) * MLO_FILTER_STRIDE1 +
+    // MLO_FILTER_SIZE1,
+    // (MLO_FILTER_SIZE1 - MLO_FILTER_STRIDE1) of it is reusable from previous read,
+    // (MLO_N_ALIGNED_OUT_SCAN_BLK * MLO_FILTER_STRIDE1) of it is fresh read from device memory.
+    // So (MLO_FILTER_SIZE1 - MLO_FILTER_STRIDE1) need no less than 0.
+    solution &= params.kernel_size1 - params.kernel_stride1 >= 0;
+#endif
+
+    // The first scan of stripe of the input into LDS will read a strip of height (kernel_size1 -
+    // kernel_stride1),
+    // this stripe should include the whole lower bound padding, as well as some or none of the
+    // input.
+    solution &= params.kernel_size1 - params.kernel_stride1 >= params.pad1;
+
+    return solution;
 }
 
 ConvSolution ConvOclBwdWrW2::GetSolution(const ConvolutionContext& params) const
@@ -122,6 +136,7 @@ ConvSolution ConvOclBwdWrW2::GetSolution(const ConvolutionContext& params) const
     // number  of batch iterations
     result.n_stacks = 1;
     result.n_stacks = std::min(params.batch_sz, result.n_stacks);
+    assert((N_BATCH_LOOPS * result.n_stacks) != 0);
     int n_batch_blks =
         (params.batch_sz + N_BATCH_LOOPS * result.n_stacks - 1) / (N_BATCH_LOOPS * result.n_stacks);
 
@@ -129,14 +144,9 @@ ConvSolution ConvOclBwdWrW2::GetSolution(const ConvolutionContext& params) const
     while(n_batch_blks > 1 && wei_bstride * params.n_inputs * n_batch_blks > 4 * 1024 * 1024)
     {
         N_BATCH_LOOPS <<= 1;
+        assert((N_BATCH_LOOPS * result.n_stacks) != 0);
         n_batch_blks = (params.batch_sz + N_BATCH_LOOPS * result.n_stacks - 1) /
                        (N_BATCH_LOOPS * result.n_stacks);
-    }
-
-    if(params.n_passes)
-    {
-        result.passes = (n_batch_blks > 1) ? 2 : 1;
-        return result;
     }
 
     // number of filter taps in the processing wk_item
@@ -167,8 +177,10 @@ ConvSolution ConvOclBwdWrW2::GetSolution(const ConvolutionContext& params) const
     std::string READ_TYPE = (read_unit == 1) ? "_FLOAT" : "_FLOAT" + std::to_string((read_unit));
 
     // input is output
+    assert(read_unit != 0);
     int ALIGNED_OUT_SCAN_LN = ((params.in_width + read_unit - 1) / read_unit); // image aligned scan
 
+    assert(N_ALIGNED_OUT_SCAN_BLK != 0);
     int N_OUT_BLK = (params.in_height + N_ALIGNED_OUT_SCAN_BLK - 1) / N_ALIGNED_OUT_SCAN_BLK;
 
     int lcl_mem_sz =
@@ -268,6 +280,7 @@ ConvSolution ConvOclBwdWrW2::GetSolution(const ConvolutionContext& params) const
         // input is output
 
         size_t gbl_wk0 = GRP_SZ * params.n_outputs;
+        assert(total_out_maps != 0);
         size_t gbl_wk1 = ((params.n_inputs + total_out_maps - 1) / total_out_maps);
         size_t gbl_wk2 = n_batch_blks;
 
@@ -296,6 +309,7 @@ ConvSolution ConvOclBwdWrW2::GetSolution(const ConvolutionContext& params) const
         kernel.l_wk.push_back(1);
         kernel.l_wk.push_back(1);
 
+        assert(ut_read_unit != 0);
         int gbl_ut_wk0 = wei_bstride * params.n_inputs / ut_read_unit;
 
         kernel.g_wk.push_back(gbl_ut_wk0);
@@ -303,7 +317,8 @@ ConvSolution ConvOclBwdWrW2::GetSolution(const ConvolutionContext& params) const
         kernel.g_wk.push_back(1);
         result.construction_params.push_back(kernel);
 
-        int data_len       = (params.out_data_type == "FP32" ? 4 : 8);
+        int data_len =
+            (params.out_data_type == "FP16" ? 2 : params.out_data_type == "FP32" ? 4 : 8);
         result.workspce_sz = wei_bstride * params.n_inputs * n_batch_blks * data_len;
     }
     return result;

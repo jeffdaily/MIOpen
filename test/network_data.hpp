@@ -50,6 +50,9 @@ inline std::set<std::vector<int>> get_inputs(int n = MIOPEN_TEST_DEFAULT_BATCH_S
     // clang-format off
     return 
     {
+        { pick_batch_size(32,  n), 1,    14,  14  },
+        { pick_batch_size(100, n), 1,    8,   8   },
+        { pick_batch_size(256, n), 1,    27,  27  },
         { pick_batch_size(100, n), 19,   1024,2048},
         { pick_batch_size(100, n), 3,    32,  32  },
         { pick_batch_size(100, n), 32,   16,  16  },
@@ -290,7 +293,7 @@ get_bn_peract_inputs(int n = MIOPEN_TEST_DEFAULT_BATCH_SIZE_FACTOR)
         { pick_batch_size(32, n),  64,   28,  28  },
         { pick_batch_size(32, n),  64,   56,  56  },
         { pick_batch_size(32, n),  96,   28,  28  },
-        //{ pick_batch_size(32, n),  192,  256, 512 }, //Killing this config. Takes way too long on the CPU
+        { pick_batch_size(32, n),  32,  256,  512 }, //Killing this config. Takes way too long on the CPU
         { pick_batch_size(32, n),  256,  28,  28  },
         { pick_batch_size(32, n),  3,    224, 224 },
         { pick_batch_size(32, n),  480,  128, 256 },
@@ -310,8 +313,9 @@ get_bn_spatial_inputs(int n = MIOPEN_TEST_DEFAULT_BATCH_SIZE_FACTOR)
         { pick_batch_size(32, n),  480,  128, 256 },
         { pick_batch_size(256, n), 3,    227, 227 },
         { pick_batch_size(256, n), 64,   112, 112 },
+        { pick_batch_size(512, n), 16,   32,  32  },
         { pick_batch_size(32, n),  64,   112, 112 },
-        { pick_batch_size(100, n), 3,    32,  32  },
+        //{ pick_batch_size(100, n), 3,    32,  32  },// causing issues with Jenkins
         { pick_batch_size(100, n), 32,   8,   8   },
         { pick_batch_size(128, n), 256,  12,  12  },
         { pick_batch_size(256, n), 1024, 14,  14  },// n is from the paper @ 256
@@ -350,6 +354,85 @@ get_bn_spatial_inputs(int n = MIOPEN_TEST_DEFAULT_BATCH_SIZE_FACTOR)
     // clang-format on
 }
 
+inline std::set<std::vector<int>>
+get_3d_bn_peract_inputs(int n = MIOPEN_TEST_DEFAULT_BATCH_SIZE_FACTOR)
+{
+    // clang-format off
+    return 
+    {
+        { pick_batch_size(32, n),   1,   32,  32,  32  },       // 32x32x32 based on VoxNet arch
+        { pick_batch_size(32, n),   1,   14,  14,  14  },
+        { pick_batch_size(32, n),  32,   14,  14,  14  },
+        { pick_batch_size(32, n),  32,   12,  12,  12  },
+        { pick_batch_size(32, n),  32,    6,   6,   6  },
+        { pick_batch_size(256, n),  1,   32,  32,  32  },      // 32x32x32 based on VoxNet arch
+        { pick_batch_size(256, n), 32,   14,  14,  14  },
+        { pick_batch_size(256, n), 32,   12,  12,  12  },
+        { pick_batch_size(256, n), 32,    6,   6,   6  },        
+        { pick_batch_size(512, n),  1,   32,  32,  32  },      // 32x32x32 based on VoxNet arch
+        { pick_batch_size(512, n), 32,   14,  14,  14  },
+        { pick_batch_size(512, n), 32,   12,  12,  12  },
+        { pick_batch_size(512, n), 32,    6,   6,   6  },                
+        { pick_batch_size(32, n),   2,   32,  57, 125  },       // Hand-gesture recognition CVPR 2015 paper High Res Net Path
+        { pick_batch_size(32, n),  32,   14,  25,  59  },
+        { pick_batch_size(32, n),  32,    6,  10,  27  },
+        { pick_batch_size(32, n),  32,    4,   6,  11  },                        
+        { pick_batch_size(32, n),  32,    2,   2,   3  },                        
+        { pick_batch_size(32, n),  32,   32,  28,  62  },       // Hand-gesture recognition CVPR 2015 paper Low Res Net Path 
+        { pick_batch_size(32, n),  32,   14,  12,  29  },
+        { pick_batch_size(32, n),  32,    6,   4,  12  },                        
+        { pick_batch_size(32, n),  32,    4,   2,   2  },                        
+        { pick_batch_size(16, n),  32,    6,  50,  50  },       // Multi-view 3D convnet
+        { pick_batch_size(1,  n),   3,    8, 240, 320  },      // 3D convet on video
+        { pick_batch_size(1,  n),   3,   16, 240, 320  },      // 3D convet on video
+        { pick_batch_size(1,  n),   3,    8, 128, 171  },      // 3D convet on video
+        { pick_batch_size(1,  n),   3,   16, 128, 171  },      // 3D convet on video
+        { pick_batch_size(1,  n),   3,    8, 112, 112  },      // 3D convet on video
+        { pick_batch_size(1,  n),   3,   16, 112, 112  }      // 3D convet on video
+    };
+
+    // clang-format on
+}
+
+inline std::set<std::vector<int>>
+get_3d_bn_spatial_inputs(int n = MIOPEN_TEST_DEFAULT_BATCH_SIZE_FACTOR)
+{
+    // clang-format off
+    return 
+    {
+        { pick_batch_size(32, n),   1,   32,  32,  32  },       // 32x32x32 based on VoxNet arch
+        { pick_batch_size(32, n),   1,   14,  14,  14  },
+        { pick_batch_size(32, n),  32,   14,  14,  14  },
+        { pick_batch_size(32, n),  32,   12,  12,  12  },
+        { pick_batch_size(32, n),  32,    6,   6,   6  },
+        { pick_batch_size(256, n),  1,   32,  32,  32  },      // 32x32x32 based on VoxNet arch
+        { pick_batch_size(256, n), 32,   14,  14,  14  },
+        { pick_batch_size(256, n), 32,   12,  12,  12  },
+        { pick_batch_size(256, n), 32,    6,   6,   6  },        
+        { pick_batch_size(512, n),  1,   32,  32,  32  },      // 32x32x32 based on VoxNet arch
+        { pick_batch_size(512, n), 32,   14,  14,  14  },
+        { pick_batch_size(512, n), 32,   12,  12,  12  },
+        { pick_batch_size(512, n), 32,    6,   6,   6  },                
+        { pick_batch_size(32,  n),  2,   32,  57, 125  },       // Hand-gesture recognition CVPR 2015 paper High Res Net Path
+        { pick_batch_size(32,  n), 32,   14,  25,  59  },
+        { pick_batch_size(32,  n), 32,    6,  10,  27  },
+        { pick_batch_size(32,  n), 32,    4,   6,  11  },                        
+        { pick_batch_size(32,  n), 32,    2,   2,   3  },                        
+        { pick_batch_size(32,  n), 32,   32,  28,  62  },       // Hand-gesture recognition CVPR 2015 paper Low Res Net Path 
+        { pick_batch_size(32,  n), 32,   14,  12,  29  },
+        { pick_batch_size(32,  n), 32,    6,   4,  12  },                        
+        { pick_batch_size(32,  n), 32,    4,   2,   2  },                        
+        { pick_batch_size(16,  n), 32,    6,  50,  50  },       // Multi-view 3D convnet
+        { pick_batch_size(1,   n), 3,     8,  240, 320 },      // 3D convet on video
+        { pick_batch_size(1,   n), 3,    16,  240, 320 },      // 3D convet on video
+        { pick_batch_size(1,   n), 3,     8,  128, 171 },      // 3D convet on video
+        { pick_batch_size(1,   n), 3,    16,  128, 171 },      // 3D convet on video
+        { pick_batch_size(1,   n), 3,     8,  112, 112 },      // 3D convet on video
+        { pick_batch_size(1,   n), 3,    16,  112, 112 }      // 3D convet on video
+    };
+    // clang-format on
+}
+
 inline std::vector<std::vector<int>> get_sub_tensor()
 {
     return {{16, 4, 8, 1, 4},
@@ -367,5 +450,7 @@ inline std::vector<std::vector<int>> get_tensor_offsets()
 {
     return {{0, 0}, {0, 2}, {4, 0}, {5, 7}};
 }
+
+inline std::vector<int> get_tensor_offset() { return {0, 1, 2, 3, 4, 5}; }
 
 #endif

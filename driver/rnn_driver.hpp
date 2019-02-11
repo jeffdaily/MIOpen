@@ -218,7 +218,12 @@ int RNNDriver<T>::GetandSetData()
 template <typename T>
 int RNNDriver<T>::AddCmdLineArgs()
 {
-    inflags.AddInputFlag("forw", 'F', "0", "Run only Forward RNN (Default=0)", "int");
+    inflags.AddInputFlag(
+        "forw",
+        'F',
+        "0",
+        "Run only Forward RNN == 1 or only Backward RNN == 2 or both == 0 (Default=0)",
+        "int");
     inflags.AddInputFlag("num_layer", 'l', "1", "Number of hidden stacks (Default=1)", "int");
     inflags.AddInputFlag(
         "seq_len", 'k', "1", "Number of iterations to unroll over (Default=10)", "int");
@@ -227,26 +232,27 @@ int RNNDriver<T>::AddCmdLineArgs()
     inflags.AddInputFlag("batchsize", 'n', "4", "Mini-batch size (Default=4)", "vector");
     inflags.AddInputFlag("hid_h", 'H', "32", "Hidden State Length (Default=32)", "int");
     inflags.AddInputFlag("in_h", 'W', "32", "Input Length (Default=32)", "int");
-    inflags.AddInputFlag("iter", 'i', "1", "Number of Iterations (Default=10)", "int");
+    inflags.AddInputFlag("iter", 'i', "1", "Number of Iterations (Default=1)", "int");
     inflags.AddInputFlag("verify", 'V', "1", "Verify Each Layer (Default=1)", "int");
+    /*
+    // DL: This is disabled below, so I'm turninig it off here
     inflags.AddInputFlag("verification_cache",
                          'C',
                          "",
                          "Use specified directory to cache verification data. Off by default.",
                          "string");
+    */
     inflags.AddInputFlag("time", 't', "0", "Time Each Layer (Default=0)", "int");
     inflags.AddInputFlag(
         "wall", 'w', "0", "Wall-clock Time Each Layer, Requires time == 1 (Default=0)", "int");
-    inflags.AddInputFlag("search", 's', "0", "Search Kernel Config (Default=0)", "int");
-    inflags.AddInputFlag("printconv", 'P', "1", "Print Convolution Dimensions (Default=1)", "int");
     inflags.AddInputFlag("dump_output", 'o', "0", "Dumps the output buffers (Default=0)", "int");
-    inflags.AddInputFlag("in_data", 'd', "", "Input data filename (Default=)", "string");
-    inflags.AddInputFlag("weights", 'e', "", "Input weights filename (Default=)", "string");
+    /*  // DL: These have not been implemented. Removing them for now.
+        inflags.AddInputFlag("in_data", 'd', "", "Input data filename (Default=)", "string");
+        inflags.AddInputFlag("weights", 'e', "", "Input weights filename (Default=)", "string");*/
     inflags.AddInputFlag("bias", 'b', "", "Use Bias (Default=0)", "int");
     inflags.AddInputFlag(
         "mode", 'm', "tanh", "RNN Mode (relu, tanh, lstm, gru) (Default=tanh)", "str");
-    inflags.AddInputFlag(
-        "inputmode", 'p', "0", "linear or skip, default linear (Default=0)", "int");
+    inflags.AddInputFlag("inputmode", 'p', "0", "linear == 0 or skip == 1, (Default=0)", "int");
     inflags.AddInputFlag(
         "rnnalgo", 'a', "0", "default, persist static or persist dynamic (Default=0)", "int");
     inflags.AddInputFlag("fwdtype",
@@ -286,18 +292,33 @@ std::vector<int> RNNDriver<T>::GetInputTensorLengthsFromCmdLine()
             ss.ignore();
         }
 
-        if(in_n[cont] > in_n[cont - 1])
+        if(cont > 0 && in_n[cont] > in_n[cont - 1])
         {
             printf("Incorrect input batch size at time %d\n", cont);
             return std::vector<int>({0});
         }
         else
         {
-            in_n[cont] = in_n[cont] * 10 + element;
+            in_n[cont] = element;
             cont++;
         }
     }
+
     adjustedSeqLen = nseq;
+
+    if(nseq > cont)
+    {
+        printf("length of data sequence == %d is short than time sequence == %d, padding the rest "
+               "of data sequence with %d\n",
+               cont,
+               nseq,
+               in_n[cont - 1]);
+        for(int i = cont; i < nseq; i++)
+        {
+            in_n[i] = in_n[cont - 1];
+        }
+    }
+
     in_n.push_back(in_h);
 
     return in_n;
@@ -486,87 +507,95 @@ int RNNDriver<T>::AllocateBuffersAndCopy()
 #elif MIOPEN_BACKEND_HIP
     uint32_t ctx = 0;
 #endif
+
     in_dev        = std::unique_ptr<GPUMem>(new GPUMem(ctx, in_sz, sizeof(T)));
-    din_dev       = std::unique_ptr<GPUMem>(new GPUMem(ctx, in_sz, sizeof(T)));
-    wei_dev       = std::unique_ptr<GPUMem>(new GPUMem(ctx, wei_sz, sizeof(T)));
-    dwei_dev      = std::unique_ptr<GPUMem>(new GPUMem(ctx, wei_sz, sizeof(T)));
-    dout_dev      = std::unique_ptr<GPUMem>(new GPUMem(ctx, out_sz, sizeof(T)));
-    out_dev       = std::unique_ptr<GPUMem>(new GPUMem(ctx, out_sz, sizeof(T)));
     hx_dev        = std::unique_ptr<GPUMem>(new GPUMem(ctx, hy_sz, sizeof(T)));
+    out_dev       = std::unique_ptr<GPUMem>(new GPUMem(ctx, out_sz, sizeof(T)));
+    wei_dev       = std::unique_ptr<GPUMem>(new GPUMem(ctx, wei_sz, sizeof(T)));
     cx_dev        = std::unique_ptr<GPUMem>(new GPUMem(ctx, hy_sz, sizeof(T)));
-    hy_dev        = std::unique_ptr<GPUMem>(new GPUMem(ctx, hy_sz, sizeof(T)));
-    cy_dev        = std::unique_ptr<GPUMem>(new GPUMem(ctx, hy_sz, sizeof(T)));
-    dhx_dev       = std::unique_ptr<GPUMem>(new GPUMem(ctx, hy_sz, sizeof(T)));
-    dcx_dev       = std::unique_ptr<GPUMem>(new GPUMem(ctx, hy_sz, sizeof(T)));
-    dhy_dev       = std::unique_ptr<GPUMem>(new GPUMem(ctx, hy_sz, sizeof(T)));
-    dcy_dev       = std::unique_ptr<GPUMem>(new GPUMem(ctx, hy_sz, sizeof(T)));
     workspace_dev = std::unique_ptr<GPUMem>(new GPUMem(ctx, workSpaceSize / sizeof(T), sizeof(T)));
     reservespace_dev =
         std::unique_ptr<GPUMem>(new GPUMem(ctx, reserveSpaceSize / sizeof(T), sizeof(T)));
 
-    in                = std::vector<T>(in_sz);
-    din               = std::vector<T>(in_sz, 0);
-    wei               = std::vector<T>(wei_sz);
-    dwei              = std::vector<T>(wei_sz, 0);
-    dout              = std::vector<T>(out_sz, 0);
-    out               = std::vector<T>(out_sz, 0);
-    hx                = std::vector<T>(hy_sz, 0);
-    cx                = std::vector<T>(hy_sz, 0);
-    hy                = std::vector<T>(hy_sz, 0);
-    cy                = std::vector<T>(hy_sz, 0);
-    dhx               = std::vector<T>(hy_sz, 0);
-    dcx               = std::vector<T>(hy_sz, 0);
-    dhy               = std::vector<T>(hy_sz, 0);
-    dcy               = std::vector<T>(hy_sz, 0);
+    if(inflags.GetValueInt("forw") != 2)
+    {
+        hy_dev = std::unique_ptr<GPUMem>(new GPUMem(ctx, hy_sz, sizeof(T)));
+        cy_dev = std::unique_ptr<GPUMem>(new GPUMem(ctx, hy_sz, sizeof(T)));
+    }
+
+    if(inflags.GetValueInt("forw") != 1)
+    {
+        din_dev  = std::unique_ptr<GPUMem>(new GPUMem(ctx, in_sz, sizeof(T)));
+        dwei_dev = std::unique_ptr<GPUMem>(new GPUMem(ctx, wei_sz, sizeof(T)));
+        dout_dev = std::unique_ptr<GPUMem>(new GPUMem(ctx, out_sz, sizeof(T)));
+        dhx_dev  = std::unique_ptr<GPUMem>(new GPUMem(ctx, hy_sz, sizeof(T)));
+        dcx_dev  = std::unique_ptr<GPUMem>(new GPUMem(ctx, hy_sz, sizeof(T)));
+        dhy_dev  = std::unique_ptr<GPUMem>(new GPUMem(ctx, hy_sz, sizeof(T)));
+        dcy_dev  = std::unique_ptr<GPUMem>(new GPUMem(ctx, hy_sz, sizeof(T)));
+    }
+
+    in  = std::vector<T>(in_sz);
+    hx  = std::vector<T>(hy_sz, 0);
+    wei = std::vector<T>(wei_sz);
+    out = std::vector<T>(out_sz, 0);
+    cx  = std::vector<T>(hy_sz, 0);
+
+    if(inflags.GetValueInt("forw") != 2)
+    {
+        hy      = std::vector<T>(hy_sz, 0);
+        cy      = std::vector<T>(hy_sz, 0);
+        hy_host = std::vector<T>(hy_sz, 0);
+        cy_host = std::vector<T>(hy_sz, 0);
+    }
+
     workspace         = std::vector<T>(workSpaceSize / sizeof(T), 0);
     reservespace      = std::vector<T>(reserveSpaceSize / sizeof(T), 0);
     outhost           = std::vector<T>(out_sz, 0);
     workspace_host    = std::vector<T>(workSpaceSize / sizeof(T), 0);
     reservespace_host = std::vector<T>(reserveSpaceSize / sizeof(T), 0);
-    dwei_host         = std::vector<T>(wei_sz, 0);
-    din_host          = std::vector<T>(in_sz, 0);
-    hy_host           = std::vector<T>(hy_sz, 0);
-    cy_host           = std::vector<T>(hy_sz, 0);
-    dhx_host          = std::vector<T>(hy_sz, 0);
-    dcx_host          = std::vector<T>(hy_sz, 0);
 
-    std::string inFileName  = inflags.GetValueStr("in_data");
-    std::string weiFileName = inflags.GetValueStr("weights");
-
-    /*
-    Unless seed is persistent between runs validation using cache stored in file is impossible.
-    */
-    srand(0);
-
-    bool dataRead = false;
-    if(!inFileName.empty())
+    if(inflags.GetValueInt("forw") != 1)
     {
-        dataRead = readBufferFromFile(in.data(), in_sz, inFileName.c_str());
+        din       = std::vector<T>(in_sz, 0);
+        dwei      = std::vector<T>(wei_sz, 0);
+        dout      = std::vector<T>(out_sz, 0);
+        dhx       = std::vector<T>(hy_sz, 0);
+        dcx       = std::vector<T>(hy_sz, 0);
+        dhy       = std::vector<T>(hy_sz, 0);
+        dcy       = std::vector<T>(hy_sz, 0);
+        din_host  = std::vector<T>(in_sz, 0);
+        dwei_host = std::vector<T>(wei_sz, 0);
+        dhx_host  = std::vector<T>(hy_sz, 0);
+        dcx_host  = std::vector<T>(hy_sz, 0);
     }
 
+    /*  // Not implemented.
+        std::string inFileName  = inflags.GetValueStr("in_data");
+        std::string weiFileName = inflags.GetValueStr("weights");*/
+
+    // Unless seed is persistent between runs validation using cache stored in file is impossible.
+    srand(0);
     double scale = 0.01;
 
-    if(!dataRead)
-    {
-        for(int i = 0; i < in_sz; i++)
+    /*    bool dataRead = false;
+        bool weiRead = false;
+        if(!inFileName.empty())
         {
-            in[i] = static_cast<T>((static_cast<double>(scale * rand()) * (1.0 / RAND_MAX)));
+            std::cerr << "Loading input data from file is a feature which has not been implemented
+       in MIOpenDriver." << std::endl;
+            // Not implemented.
+            //dataRead = readBufferFromFile(in.data(), in_sz, inFileName.c_str());
         }
-    }
+    */
 
-    for(int i = 0; i < out_sz; i++)
+    for(int i = 0; i < in_sz; i++)
     {
-        dout[i] = static_cast<T>((scale * static_cast<double>(rand()) * (1.0 / RAND_MAX)));
+        in[i] = static_cast<T>((static_cast<double>(scale * rand()) * (1.0 / RAND_MAX)));
     }
 
     for(int i = 0; i < hy_sz; i++)
     {
         hx[i] = static_cast<T>((scale * static_cast<double>(rand()) * (1.0 / RAND_MAX)));
-    }
-
-    for(int i = 0; i < hy_sz; i++)
-    {
-        dhy[i] = static_cast<T>((scale * static_cast<double>(rand()) * (1.0 / RAND_MAX)));
     }
 
     if((inflags.GetValueStr("mode")) == "lstm")
@@ -575,26 +604,42 @@ int RNNDriver<T>::AllocateBuffersAndCopy()
         {
             cx[i] = static_cast<T>((scale * static_cast<double>(rand()) * (1.0 / RAND_MAX)));
         }
+    }
+
+    if(inflags.GetValueInt("forw") != 1)
+    {
+        for(int i = 0; i < out_sz; i++)
+        {
+            dout[i] = static_cast<T>((scale * static_cast<double>(rand()) * (1.0 / RAND_MAX)));
+        }
 
         for(int i = 0; i < hy_sz; i++)
         {
-            dcy[i] = static_cast<T>((scale * static_cast<double>(rand()) * (1.0 / RAND_MAX)));
+            dhy[i] = static_cast<T>((scale * static_cast<double>(rand()) * (1.0 / RAND_MAX)));
         }
-    }
 
-    bool weiRead = false;
-    if(!weiFileName.empty())
-    {
-        weiRead = readBufferFromFile(wei.data(), wei_sz, weiFileName.c_str());
-    }
-
-    if(!weiRead)
-    {
-        for(int i = 0; i < wei_sz; i++)
+        if((inflags.GetValueStr("mode")) == "lstm")
         {
-            wei[i] =
-                static_cast<T>((scale * static_cast<double>((rand()) * (1.0 / RAND_MAX) - 0.5)));
+            for(int i = 0; i < hy_sz; i++)
+            {
+                dcy[i] = static_cast<T>((scale * static_cast<double>(rand()) * (1.0 / RAND_MAX)));
+            }
         }
+    }
+
+    /*
+        if(!weiFileName.empty())
+        {
+            std::cerr << "Loading weights from file is a feature which has not been implemented in
+       MIOpenDriver." << std::endl;
+            // Not implemented.
+            // weiRead = readBufferFromFile(wei.data(), wei_sz, weiFileName.c_str());
+        }
+    */
+
+    for(int i = 0; i < wei_sz; i++)
+    {
+        wei[i] = static_cast<T>((scale * static_cast<double>((rand()) * (1.0 / RAND_MAX) - 0.5)));
     }
 
     if(inflags.GetValueInt("dump_output"))
@@ -609,25 +654,40 @@ int RNNDriver<T>::AllocateBuffersAndCopy()
 #define CL_SUCCESS 0
     int status;
 #endif
+
     status = in_dev->ToGPU(q, in.data());
-    status |= din_dev->ToGPU(q, din.data());
     status |= wei_dev->ToGPU(q, wei.data());
-    status |= dwei_dev->ToGPU(q, dwei.data());
-    status |= dout_dev->ToGPU(q, dout.data());
     status |= out_dev->ToGPU(q, out.data());
-    status |= hx_dev->ToGPU(q, hx.data());
     status |= cx_dev->ToGPU(q, cx.data());
-    status |= hy_dev->ToGPU(q, hy.data());
-    status |= cy_dev->ToGPU(q, cy.data());
-    status |= dhx_dev->ToGPU(q, dhx.data());
-    status |= dcx_dev->ToGPU(q, dcx.data());
-    status |= dhy_dev->ToGPU(q, dhy.data());
-    status |= dcy_dev->ToGPU(q, dcy.data());
+    status |= hx_dev->ToGPU(q, hx.data());
     status |= workspace_dev->ToGPU(q, workspace.data());
     status |= reservespace_dev->ToGPU(q, reservespace.data());
 
     if(status != CL_SUCCESS)
         printf("Error copying data to GPU\n");
+
+    if(inflags.GetValueInt("forw") != 2)
+    {
+        status = hy_dev->ToGPU(q, hy.data());
+        status |= cy_dev->ToGPU(q, cy.data());
+
+        if(status != CL_SUCCESS)
+            printf("Error copying data to GPU\n");
+    }
+
+    if(inflags.GetValueInt("forw") != 1)
+    {
+        status = din_dev->ToGPU(q, din.data());
+        status |= dwei_dev->ToGPU(q, dwei.data());
+        status |= dout_dev->ToGPU(q, dout.data());
+        status |= dhx_dev->ToGPU(q, dhx.data());
+        status |= dcx_dev->ToGPU(q, dcx.data());
+        status |= dhy_dev->ToGPU(q, dhy.data());
+        status |= dcy_dev->ToGPU(q, dcy.data());
+
+        if(status != CL_SUCCESS)
+            printf("Error copying data to GPU\n");
+    }
 
     return miopenStatusSuccess;
 }
@@ -713,12 +773,14 @@ int RNNDriver<T>::RunForwardGPU()
                                       workspace_dev->GetMem(),
                                       workspace_dev->GetSize());
         }
+        miopen::deref(GetHandle()).Finish();
         STOP_TIME;
-        float time = 0.0;
-        miopenGetKernelTime(GetHandle(), &time);
 
         if(i > 0 || inflags.GetValueInt("iter") == 1)
         {
+            float time = 0.0;
+            miopenGetKernelTime(GetHandle(), &time);
+            // printf("wall time: %f\n", t.gettime_ms());
             wl_time_forward += t.gettime_ms();
             kl_time_forward += time;
         }
@@ -728,9 +790,14 @@ int RNNDriver<T>::RunForwardGPU()
     {
         int n_iter = inflags.GetValueInt("iter") > 1 ? inflags.GetValueInt("iter") - 1
                                                      : inflags.GetValueInt("iter");
-        if(WALL_CLOCK)
-            printf("Wall-clock Time Forward RNN Elapsed: %f ms\n", wl_time_forward / n_iter);
         printf("GPU Kernel Time Forward RNN Elapsed: %f ms\n", kl_time_forward / n_iter);
+    }
+
+    if(WALL_CLOCK)
+    {
+        int n_iter = inflags.GetValueInt("iter") > 1 ? inflags.GetValueInt("iter") - 1
+                                                     : inflags.GetValueInt("iter");
+        printf("Wall-clock Time Forward RNN Elapsed: %f ms\n", wl_time_forward / n_iter);
     }
 
     out_dev->FromGPU(GetStream(), out.data());
@@ -739,11 +806,11 @@ int RNNDriver<T>::RunForwardGPU()
     reservespace_dev->FromGPU(GetStream(), reservespace.data());
 
     /*
-    if(inflags.GetValueInt("dump_output"))
-    {
-        dumpBufferToFile("dump_fwd_out_gpu.bin", out.data(), out.size());
-    }
-    */
+       if(inflags.GetValueInt("dump_output"))
+       {
+       dumpBufferToFile("dump_fwd_out_gpu.bin", out.data(), out.size());
+       }
+       */
 
     return miopenStatusSuccess;
 }
@@ -905,11 +972,12 @@ int RNNDriver<T>::RunBackwardGPU()
                                     workspace_dev->GetSize(),
                                     reservespace_dev->GetMem(),
                                     reservespace_dev->GetSize());
+        miopen::deref(GetHandle()).Finish();
         STOP_TIME;
-        float time = 0.0;
-        miopenGetKernelTime(GetHandle(), &time);
         if(i > 0 || inflags.GetValueInt("iter") == 1)
         {
+            float time = 0.0;
+            miopenGetKernelTime(GetHandle(), &time);
             wl_time_backward_data += t.gettime_ms();
             kl_time_backward_data += time;
         }
@@ -919,11 +987,16 @@ int RNNDriver<T>::RunBackwardGPU()
     {
         int n_iter = inflags.GetValueInt("iter") > 1 ? inflags.GetValueInt("iter") - 1
                                                      : inflags.GetValueInt("iter");
-        if(WALL_CLOCK)
-            printf("Wall-clock Time Backward Data RNN Elapsed: %f ms\n",
-                   wl_time_backward_data / n_iter);
         printf("GPU Kernel Time Backward Data RNN Elapsed: %f ms\n",
                kl_time_backward_data / n_iter);
+    }
+
+    if(WALL_CLOCK)
+    {
+        int n_iter = inflags.GetValueInt("iter") > 1 ? inflags.GetValueInt("iter") - 1
+                                                     : inflags.GetValueInt("iter");
+        printf("Wall-clock Time Backward Data RNN Elapsed: %f ms\n",
+               wl_time_backward_data / n_iter);
     }
 
     din_dev->FromGPU(GetStream(), din.data());
@@ -952,11 +1025,12 @@ int RNNDriver<T>::RunBackwardGPU()
                                        workspace_dev->GetSize(),
                                        reservespace_dev->GetMem(),
                                        reservespace_dev->GetSize());
+        miopen::deref(GetHandle()).Finish();
         STOP_TIME;
-        float time = 0.0;
-        miopenGetKernelTime(GetHandle(), &time);
         if(i > 0 || inflags.GetValueInt("iter") == 1)
         {
+            float time = 0.0;
+            miopenGetKernelTime(GetHandle(), &time);
             wl_time_backward_weight += t.gettime_ms();
             kl_time_backward_weight += time;
         }
@@ -966,21 +1040,26 @@ int RNNDriver<T>::RunBackwardGPU()
     {
         int n_iter = inflags.GetValueInt("iter") > 1 ? inflags.GetValueInt("iter") - 1
                                                      : inflags.GetValueInt("iter");
-        if(WALL_CLOCK)
-            printf("Wall-clock Time Backward Weights RNN Elapsed: %f ms\n",
-                   wl_time_backward_weight / n_iter);
         printf("GPU Kernel Time Backward Weights RNN Elapsed: %f ms\n",
                kl_time_backward_weight / n_iter);
     }
 
+    if(WALL_CLOCK)
+    {
+        int n_iter = inflags.GetValueInt("iter") > 1 ? inflags.GetValueInt("iter") - 1
+                                                     : inflags.GetValueInt("iter");
+        printf("Wall-clock Time Backward Weights RNN Elapsed: %f ms\n",
+               wl_time_backward_weight / n_iter);
+    }
+
     dwei_dev->FromGPU(GetStream(), dwei.data());
     /*
-    if(inflags.GetValueInt("dump_output"))
-    {
-        dumpBufferToFile("dump_bwd_din_gpu.bin", din.data(), din.size());
-        dumpBufferToFile("dump_bwd_dwei_gpu.bin", dwei.data(), dwei.size());
-    }
-        */
+       if(inflags.GetValueInt("dump_output"))
+       {
+       dumpBufferToFile("dump_bwd_din_gpu.bin", din.data(), din.size());
+       dumpBufferToFile("dump_bwd_dwei_gpu.bin", dwei.data(), dwei.size());
+       }
+       */
 
     return ret;
 }

@@ -27,8 +27,10 @@
 #include <chrono>
 #include <miopen/errors.hpp>
 #include <miopen/hipoc_kernel.hpp>
+#include <miopen/handle_lock.hpp>
 #include <thread>
 #include <hip/hip_hcc.h>
+#include <hip/hip_runtime.h>
 
 namespace miopen {
 
@@ -55,6 +57,8 @@ void HIPOCKernelInvoke::run(void* args, std::size_t size) const
     }
 
     // std::cerr << "Launch kernel: " << name << std::endl;
+
+    MIOPEN_HANDLE_LOCK
 
     auto status = hipHccModuleLaunchKernel(fun,
                                            gdims[0],

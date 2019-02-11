@@ -44,7 +44,7 @@ struct verify_lrn_foward
     miopen::LRNDescriptor lrn;
     tensor<T> input;
 
-    tensor<T> cpu()
+    tensor<T> cpu() const
     {
         auto output = input;
         int n_batch, channels, height, width;
@@ -112,7 +112,7 @@ struct verify_lrn_foward
         return output;
     }
 
-    tensor<T> gpu()
+    tensor<T> gpu() const
     {
         auto&& handle = get_handle();
         auto out      = input;
@@ -136,7 +136,7 @@ struct verify_lrn_foward
         return out;
     }
 
-    void fail(int)
+    void fail(int) const
     {
         std::cout << "verify_lrn_foward" << std::endl;
         std::cout << "Input Tensor"
@@ -155,16 +155,17 @@ struct verify_lrn_bwd
     tensor<T> outputDX;
     tensor<T> scale;
 
-    tensor<T> cpu()
+    tensor<T> cpu() const
     {
         int n_batch, channels, height, width;
         std::tie(n_batch, channels, height, width) = miopen::tien<4>(inputY.desc.GetLengths());
 
-        auto alpha  = lrn.GetAlpha();
-        auto beta   = lrn.GetBeta();
-        auto lrn_n  = lrn.GetN();
-        auto mode   = lrn.GetMode();
-        auto radius = (lrn_n - 1) / 2;
+        auto routputDX = outputDX;
+        auto alpha     = lrn.GetAlpha();
+        auto beta      = lrn.GetBeta();
+        auto lrn_n     = lrn.GetN();
+        auto mode      = lrn.GetMode();
+        auto radius    = (lrn_n - 1) / 2;
 
         if(mode == miopenLRNWithinChannel)
         {
@@ -186,8 +187,8 @@ struct verify_lrn_bwd
                         }
                     }
 
-                    outputDX(b, c, h, w) = pow(scale(b, c, h, w), -beta) * inputDY(b, c, h, w) -
-                                           cache_ratio_value * inputX(b, c, h, w) * ydy;
+                    routputDX(b, c, h, w) = pow(scale(b, c, h, w), -beta) * inputDY(b, c, h, w) -
+                                            cache_ratio_value * inputX(b, c, h, w) * ydy;
                 });
             });
         }
@@ -206,22 +207,23 @@ struct verify_lrn_bwd
                         ydy += (inputY(b, k, h, w) * inputDY(b, k, h, w) / scale(b, k, h, w));
                     }
 
-                    outputDX(b, c, h, w) = pow(scale(b, c, h, w), -beta) * inputDY(b, c, h, w) -
-                                           cache_ratio_value * inputX(b, c, h, w) * ydy;
+                    routputDX(b, c, h, w) = pow(scale(b, c, h, w), -beta) * inputDY(b, c, h, w) -
+                                            cache_ratio_value * inputX(b, c, h, w) * ydy;
                 });
             });
         }
 
-        return outputDX;
+        return routputDX;
     }
 
-    tensor<T> gpu()
+    tensor<T> gpu() const
     {
         auto&& handle     = get_handle();
+        auto routputDX    = outputDX;
         auto inputY_dev   = handle.Write(inputY.data);
         auto inputDY_dev  = handle.Write(inputDY.data);
         auto inputX_dev   = handle.Write(inputX.data);
-        auto outputDX_dev = handle.Create<T>(outputDX.data.size());
+        auto outputDX_dev = handle.Create<T>(routputDX.data.size());
         auto scale_dev    = handle.Write(scale.data);
 
         auto alpha = lrn.GetAlpha(), beta = lrn.GetBeta();
@@ -234,15 +236,15 @@ struct verify_lrn_bwd
                      inputX.desc, // X
                      inputX_dev.get(),
                      &beta,
-                     outputDX.desc, // DX
+                     routputDX.desc, // DX
                      outputDX_dev.get(),
                      scale_dev.get());
 
-        outputDX.data = handle.Read<T>(outputDX_dev, outputDX.data.size());
-        return outputDX;
+        routputDX.data = handle.Read<T>(outputDX_dev, routputDX.data.size());
+        return routputDX;
     }
 
-    void fail(int)
+    void fail(int) const
     {
         std::cout << "verify_lrn_bwd" << std::endl;
         std::cout << "Input Tensor Y"
@@ -260,9 +262,9 @@ struct lrn_driver : test_driver
     tensor<T> input;
 
     unsigned int n = 0;
-    T alpha        = 0;
-    T beta         = 0;
-    T k            = 0;
+    double alpha   = 0;
+    double beta    = 0;
+    double k       = 0;
     std::string mode;
 
     std::unordered_map<std::string, miopenLRNMode_t> mode_lookup = {
@@ -270,7 +272,9 @@ struct lrn_driver : test_driver
 
     lrn_driver()
     {
-        add(input, "input", get_input_tensor());
+        add(input,
+            "input",
+            get_input_tensor(tensor_elem_gen_integer{miopen_type<T>{} == miopenHalf ? 5 : 17}));
         add(n, "N", generate_data({1, 3, 5}));
         add(alpha, "alpha", generate_data({1.0}));
         add(beta, "beta", generate_data({0}));
@@ -288,8 +292,13 @@ struct lrn_driver : test_driver
 
         std::size_t n_batch, channels, height, width;
         std::tie(n_batch, channels, height, width) = miopen::tien<4>(input.desc.GetLengths());
-        auto scale  = tensor<T>{n_batch, channels, height, width}.generate(rand_gen{});
-        auto inputX = tensor<T>{n_batch, channels, height, width}.generate(rand_gen{});
+
+        unsigned long max_value = miopen_type<T>{} == miopenHalf ? 5 : 17;
+
+        auto scale = tensor<T>{n_batch, channels, height, width}.generate(
+            tensor_elem_gen_integer{max_value});
+        auto inputX = tensor<T>{n_batch, channels, height, width}.generate(
+            tensor_elem_gen_integer{max_value});
         par_ford(n_batch, channels, height, width)(
             [&](int b, int c, int h, int w) { scale(b, c, h, w) += 1; });
 
@@ -297,4 +306,4 @@ struct lrn_driver : test_driver
     };
 };
 
-int main(int argc, const char* argv[]) { test_drive<lrn_driver<float>>(argc, argv); };
+int main(int argc, const char* argv[]) { test_drive<lrn_driver>(argc, argv); };

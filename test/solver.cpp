@@ -1,30 +1,33 @@
 /*******************************************************************************
-*
-* MIT License
-*
-* Copyright (c) 2017 Advanced Micro Devices, Inc.
-*
-* Permission is hereby granted, free of charge, to any person obtaining a copy
-* of this software and associated documentation files (the "Software"), to deal
-* in the Software without restriction, including without limitation the rights
-* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-* copies of the Software, and to permit persons to whom the Software is
-* furnished to do so, subject to the following conditions:
-*
-* The above copyright notice and this permission notice shall be included in all
-* copies or substantial portions of the Software.
-*
-* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-* SOFTWARE.
-*
-*******************************************************************************/
+ *
+ * MIT License
+ *
+ * Copyright (c) 2017 Advanced Micro Devices, Inc.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
+ *******************************************************************************/
 
+#include <miopen/convolution.hpp>
 #include <miopen/solver.hpp>
+#include <miopen/mlo_internal.hpp>
+#include <miopen/temp_file.hpp>
 
 #include <cstdlib>
 #include <functional>
@@ -32,8 +35,6 @@
 #include <typeinfo>
 
 #include "get_handle.hpp"
-#include <miopen/mlo_internal.hpp>
-#include "temp_file_path.hpp"
 #include "test.hpp"
 
 namespace miopen {
@@ -137,25 +138,25 @@ int SearchableTestSolver::_serches_done = 0;
 class TrivialConstruct : public mlo_construct_direct2D
 {
     public:
-    TrivialConstruct(const char* db_path, int dir, bool do_bias = false)
-        : mlo_construct_direct2D(dir, do_bias)
+    TrivialConstruct(const TensorDescriptor& in, const char* db_path, int dir, bool do_bias = false)
+        : mlo_construct_direct2D(
+              in, TensorDescriptor{}, TensorDescriptor{}, ConvolutionDescriptor{}, dir, do_bias)
     {
         _db_path = db_path;
     }
 
-    solver::ConvSolution FindSolution()
+    solver::ConvSolution FindSolution() const
     {
+        Db db(_db_path);
+
         // clang-format off
         return miopen::solver::SearchForSolution<
             TrivialSlowTestSolver,
             TrivialTestSolver,
             SearchableTestSolver
-        >(_search_params, this->GetDbRecord());
+        >(_search_params, db);
         // clang-format on
     }
-
-    protected:
-    std::string db_path() const { return _db_path; }
 };
 
 class SolverTest
@@ -163,49 +164,59 @@ class SolverTest
     public:
     void Run() const
     {
-        TempFilePath db_path("/tmp/miopen.tests.solver.XXXXXX");
+        const TempFile db_path("miopen.tests.solver");
 
-        ConstructTest(db_path, TrivialSlowTestSolver::FileName(), [](mlo_construct_direct2D& c) {
-            c.setInputDescr("", "", 0, 0, 1, 1, 0, 0, 0, 0);
-        });
-        ConstructTest(db_path, TrivialTestSolver::FileName(), [](mlo_construct_direct2D& c) {
-            c.setInputDescr("", "", 0, 0, 0, 1, 0, 0, 0, 0);
-        });
-        ConstructTest(db_path, TrivialTestSolver::FileName(), [](mlo_construct_direct2D& c) {
-            c.setInputDescr("", "", 0, 0, 0, 1, 0, 0, 0, 0);
-            c.doSearch(true);
-        });
+        ConstructTest(db_path, TrivialSlowTestSolver::FileName(), {0, 0, 1, 1});
+
+        ConstructTest(db_path, TrivialTestSolver::FileName(), {0, 0, 0, 1});
+
+        ConstructTest(db_path,
+                      TrivialTestSolver::FileName(),
+                      {0, 0, 0, 1},
+                      [](mlo_construct_direct2D& c) { c.setDoSearch(true); });
+
         ConstructTest(db_path,
                       SearchableTestSolver::NoSearchFileName(),
-                      [](mlo_construct_direct2D& c) { c.doSearch(false); });
-        ConstructTest(db_path, SearchableTestSolver::FileName(), [](mlo_construct_direct2D& c) {
-            c.doSearch(true);
-        });
+                      {0, 0, 0, 0},
+                      [](mlo_construct_direct2D& c) { c.setDoSearch(false); });
+
+        ConstructTest(db_path,
+                      SearchableTestSolver::FileName(),
+                      {0, 0, 0, 0},
+                      [](mlo_construct_direct2D& c) { c.setDoSearch(true); });
 
         const auto& searchable_solver = StaticContainer<const SearchableTestSolver>::Instance();
-        const auto searches           = miopen::tests::SearchableTestSolver::searches_done();
+        const auto searches           = SearchableTestSolver::searches_done();
 
         // Should read in both cases: result is already in DB, solver is searchable.
-        ConstructTest(db_path, SearchableTestSolver::FileName(), [](mlo_construct_direct2D&) {});
-        ConstructTest(db_path, SearchableTestSolver::FileName(), [](mlo_construct_direct2D& c) {
-            c.doSearch(true);
-        });
+        ConstructTest(db_path,
+                      SearchableTestSolver::FileName(),
+                      {0, 0, 0, 0},
+                      [](mlo_construct_direct2D&) {});
+
+        ConstructTest(db_path,
+                      SearchableTestSolver::FileName(),
+                      {0, 0, 0, 0},
+                      [](mlo_construct_direct2D& c) { c.setDoSearch(true); });
+
         // Checking no more searches were done.
         EXPECT_EQUAL(searches, searchable_solver.searches_done());
     }
 
     private:
-    void ConstructTest(const char* db_path,
-                       const char* expected_kernel,
-                       std::function<void(mlo_construct_direct2D&)> context_filler) const
+    static void ConstructTest(const std::string& db_path,
+                              const char* expected_kernel,
+                              const std::initializer_list<size_t>& in,
+                              const std::function<void(mlo_construct_direct2D&)>& context_filler =
+                                  [](mlo_construct_direct2D&) {})
     {
-        TrivialConstruct construct(db_path, 1);
+        TrivialConstruct construct(TensorDescriptor{miopenFloat, in}, db_path.c_str(), 1);
         construct.setStream(&get_handle());
 
         context_filler(construct);
-        mloConstruct(construct);
+        const auto sol = FindFirstSolution(construct);
 
-        EXPECT_EQUAL(construct.getKernelFile(), expected_kernel);
+        EXPECT_EQUAL(sol.construction_params[0].kernel_file, expected_kernel);
     }
 };
 } // namespace tests

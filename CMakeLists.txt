@@ -1,19 +1,19 @@
 ################################################################################
-# 
+#
 # MIT License
-# 
+#
 # Copyright (c) 2017 Advanced Micro Devices, Inc.
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in all
 # copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -21,7 +21,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-# 
+#
 ################################################################################
 cmake_minimum_required( VERSION 2.8.12 )
 
@@ -57,7 +57,7 @@ if(NOT WIN32 AND NOT APPLE)
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -s")
 endif()
 
-rocm_setup_version(VERSION 1.2.1)
+rocm_setup_version(VERSION 1.5.0)
 
 list( APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake )
 
@@ -75,7 +75,7 @@ add_compile_options(-std=c++14)
 # OPTION - MIOpen Backend
 # - OpenCL
 # - HCC
-if(CMAKE_CXX_COMPILER MATCHES ".*hcc")
+if(CMAKE_CXX_COMPILER MATCHES ".*hcc" OR CMAKE_CXX_COMPILER MATCHES ".*hipcc")
     set(MIOPEN_DEFAULT_BACKEND "HIP")
 else()
     set(MIOPEN_DEFAULT_BACKEND "OpenCL")
@@ -105,6 +105,7 @@ endif()
 
 # HIP
 if( MIOPEN_BACKEND STREQUAL "HIP" OR MIOPEN_BACKEND STREQUAL "HIPOC")
+    list(APPEND CMAKE_PREFIX_PATH /opt/rocm /opt/rocm/hip /opt/rocm/hcc)
     set(MIOPEN_BACKEND_HIP 1)
     find_program(HIP_OC_COMPILER clang-ocl
         PATH_SUFFIXES bin
@@ -116,11 +117,19 @@ if( MIOPEN_BACKEND STREQUAL "HIP" OR MIOPEN_BACKEND STREQUAL "HIPOC")
     else()
         message(FATAL_ERROR "clang-ocl not found")
     endif()
-    
-    find_package(hip REQUIRED PATHS /opt/rocm)
+    find_package(hip REQUIRED)
     link_libraries(stdc++)
     # A hack to make this work without the device enumerator
     link_libraries(-amdgpu-target=gfx803 -amdgpu-target=gfx900 -Wno-unused-command-line-argument)
+
+    # rocblas
+    set(MIOPEN_USE_ROCBLAS OFF CACHE BOOL "")
+    if(MIOPEN_USE_ROCBLAS)
+        find_package(rocblas REQUIRED PATHS /opt/rocm)
+        message(STATUS "Build with rocblas")
+    else()
+        message(STATUS "Build without rocblas")
+    endif()
 endif()
 message( STATUS "${MIOPEN_BACKEND} backend selected." )
 
@@ -148,6 +157,8 @@ set(BOOST_COMPONENTS filesystem system)
 add_definitions(-DBOOST_ALL_NO_LIB=1)
 find_package(Boost REQUIRED COMPONENTS ${BOOST_COMPONENTS})
 
+find_path(HALF_INCLUDE_DIR half.hpp)
+
 option( BUILD_SHARED_LIBS "Build as a shared library" ON )
 
 option( BUILD_DEV "Build for development only" OFF)
@@ -155,18 +166,23 @@ option( BUILD_DEV "Build for development only" OFF)
 set( MIOPEN_INSTALL_DIR miopen)
 set( DATA_INSTALL_DIR ${MIOPEN_INSTALL_DIR}/${CMAKE_INSTALL_DATAROOTDIR}/miopen )
 
+set(MIOPEN_GPU_SYNC Off CACHE BOOL "")
 if(BUILD_DEV)
     set(MIOPEN_BUILD_DEV 1)
-    set(MIOPEN_DB_PATH "${CMAKE_SOURCE_DIR}/src/kernels")
+    set(MIOPEN_DB_PATH "${CMAKE_SOURCE_DIR}/src/kernels" CACHE PATH "Default path to search for installed db")
+    set(MIOPEN_USER_DB_PATH "${CMAKE_SOURCE_DIR}/src/kernels" CACHE PATH "Default path to search for user db")
+    set(MIOPEN_FIND_DB_PATH "${CMAKE_SOURCE_DIR}/src/kernels" CACHE PATH "Default path to search for find db")
     set(MIOPEN_CACHE_DIR "" CACHE STRING "")
 else()
     set(MIOPEN_BUILD_DEV 0)
-    set(MIOPEN_DB_PATH "${CMAKE_INSTALL_PREFIX}/${DATA_INSTALL_DIR}/db" CACHE PATH "Default path to search for db")
+    set(MIOPEN_DB_PATH "${CMAKE_INSTALL_PREFIX}/${DATA_INSTALL_DIR}/db" CACHE PATH "Default path to search for installed db")
+    set(MIOPEN_USER_DB_PATH "~/.config/miopen/" CACHE STRING "Default path to search for user db")
+    set(MIOPEN_FIND_DB_PATH "~/.config/miopen/" CACHE STRING "Default path to search for find db")
     set(MIOPEN_CACHE_DIR "~/.cache/miopen/" CACHE STRING "")
 endif()
 
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "openssl, rocm-opencl-dev, rocm-utils, hip_hcc, miopengemm")
-set(CPACK_RPM_PACKAGE_REQUIRES "openssl, rocm-opencl-dev, rocm-utils, hip_hcc, miopengemm")
+set(CPACK_RPM_PACKAGE_REQUIRES "openssl, rocm-opencl-devel, rocm-utils, hip_hcc, miopengemm")
 
 rocm_create_package(
     NAME MIOpen-${MIOPEN_BACKEND}
@@ -177,12 +193,12 @@ rocm_create_package(
 )
 
 include(EnableCompilerWarnings)
-if(CMAKE_CXX_COMPILER MATCHES ".*hcc")
+if(CMAKE_CXX_COMPILER MATCHES ".*hcc" OR CMAKE_CXX_COMPILER MATCHES ".*hipcc" )
     set(CLANG_TIDY_CHECKS -modernize-use-override -readability-non-const-parameter)
 endif()
 include(ClangTidy)
 enable_clang_tidy(
-    CHECKS 
+    CHECKS
         *
         -cert-env33-c
         -android-cloexec-fopen
@@ -219,9 +235,7 @@ enable_clang_tidy(
         -hicpp-use-override
         -llvm-header-guard
         -llvm-include-order
-        -misc-macro-parentheses
         -misc-misplaced-const
-        -misc-misplaced-widening-cast
         -modernize-pass-by-value
         -modernize-use-default-member-init
         -modernize-use-equals-default
@@ -229,16 +243,15 @@ enable_clang_tidy(
         -performance-unnecessary-value-param
         -readability-braces-around-statements
         -readability-else-after-return
-        -readability-implicit-bool-cast
-        -readability-implicit-bool-conversion
-        -readability-misleading-indentation
         -readability-named-parameter
+        -hicpp-use-auto
+	-modernize-use-auto
         ${CLANG_TIDY_CHECKS}
     ERRORS
         *
         -readability-inconsistent-declaration-parameter-name
     HEADER_FILTER
-        "hpp$"
+        ".*hpp"
     EXTRA_ARGS
         -DMIOPEN_USE_CLANG_TIDY
     ANALYZE_TEMPORARY_DTORS ON
@@ -248,22 +261,25 @@ include(CppCheck)
 enable_cppcheck(
     CHECKS 
         all
-    FORCE
     SUPPRESS 
         ConfigurationNotChecked
         unmatchedSuppression
-        constStatement
+        unusedFunction
+        # constStatement
         noExplicitConstructor
         passedByValue
         # preprocessorErrorDirective
         unusedStructMember
-        # TODO: Try to reenable this without needing inline suppressions
-        leakReturnValNotUsed
+        # Ignore initializer lists in the tests
+        useInitializationList:*test/*.cpp
         *:*.cl
+    FORCE
     SOURCES
+        addkernels/
+        # driver/
         include/
         src/
-        # test/
+        test/
     INCLUDE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_BINARY_DIR}/include

@@ -23,17 +23,20 @@
  * SOFTWARE.
  *
  *******************************************************************************/
+#include <iostream>
+#include <cstdio>
+
 #include "activ_driver.hpp"
 #include "bn_driver.hpp"
 #include "conv_driver.hpp"
+#include "CBAInferFusion_driver.hpp"
 #include "driver.hpp"
 #include "gemm_driver.hpp"
 #include "lrn_driver.hpp"
 #include "pool_driver.hpp"
 #include "softmax_driver.hpp"
 #include "rnn_driver.hpp"
-#include <cstdio>
-#include <iostream>
+#include "miopen/config.h"
 
 int main(int argc, char* argv[])
 {
@@ -48,31 +51,72 @@ int main(int argc, char* argv[])
     Driver* drv;
     if(base_arg == "conv")
     {
-        drv = new ConvDriver<float>();
+        // Maintain compatibility with legacy verification cache files (computed in doubles, stored
+        // as floats).
+        drv = new ConvDriver<float, double, float>();
+    }
+    else if(base_arg == "convfp16")
+    {
+        drv = new ConvDriver<float16, double>();
+    }
+    else if(base_arg == "CBAInfer")
+    {
+        drv = new CBAInferFusionDriver<float, double>();
+    }
+    else if(base_arg == "CBAInfer16")
+    {
+        drv = new CBAInferFusionDriver<float16, double>();
     }
     else if(base_arg == "pool")
     {
-        drv = new PoolDriver<float>();
+        drv = new PoolDriver<float, double>();
+    }
+    else if(base_arg == "poolfp16")
+    {
+        drv = new PoolDriver<float16, double>();
     }
     else if(base_arg == "lrn")
     {
-        drv = new LRNDriver<float>();
+        drv = new LRNDriver<float, double>();
+    }
+    else if(base_arg == "lrnfp16")
+    {
+        drv = new LRNDriver<float16, double>();
     }
     else if(base_arg == "activ")
     {
-        drv = new ActivationDriver<float>();
+        drv = new ActivationDriver<float, double>();
+    }
+    else if(base_arg == "activfp16")
+    {
+        drv = new ActivationDriver<float16, double>();
     }
     else if(base_arg == "softmax")
     {
-        drv = new SoftmaxDriver<float>();
+        drv = new SoftmaxDriver<float, double>();
     }
+    else if(base_arg == "softmaxfp16")
+    {
+        drv = new SoftmaxDriver<float16, double>();
+    }
+#if MIOPEN_USE_GEMM
     else if(base_arg == "gemm")
     {
         drv = new GemmDriver<float>();
     }
+// TODO half is not supported in gemm
+//    else if(base_arg == "gemmfp16")
+//    {
+//        drv = new GemmDriver<float16>();
+//    }
+#endif
     else if(base_arg == "bnorm")
     {
-        drv = new BatchNormDriver<float>();
+        drv = new BatchNormDriver<float, double>();
+    }
+    else if(base_arg == "bnormfp16")
+    {
+        drv = new BatchNormDriver<float16, double>();
     }
     else if(base_arg == "rnn")
     {
@@ -87,32 +131,33 @@ int main(int argc, char* argv[])
     drv->AddCmdLineArgs();
     drv->ParseCmdLineArgs(argc, argv);
     drv->GetandSetData();
-
     drv->AllocateBuffersAndCopy();
 
-    drv->RunForwardGPU();
+    int fargval = ((base_arg != "CBAInfer") && (base_arg != "CBAInfer16"))
+                      ? drv->GetInputFlags().GetValueInt("forw")
+                      : 1;
+    bool bnFwdInVer = (fargval == 2 && (base_arg == "bnorm"));
+    bool verifyarg  = (drv->GetInputFlags().GetValueInt("verify") == 1);
 
-    if(drv->GetInputFlags().GetValueInt("verify") == 1)
+    if((fargval != 2) || bnFwdInVer)
     {
-        if(base_arg == "gemm")
-        {
-            printf("GEMM verification done in the GEMM library\n");
-        }
-        else
+        drv->RunForwardGPU();
+    }
+
+    if(verifyarg)
+    {
+        if(fargval != 2 || bnFwdInVer)
         {
             drv->VerifyForward();
         }
     }
 
-    if(drv->GetInputFlags().GetValueInt("forw") == 0)
+    if(fargval != 1)
     {
-        if(!(base_arg == "gemm"))
+        drv->RunBackwardGPU();
+        if(verifyarg)
         {
-            drv->RunBackwardGPU();
-            if(drv->GetInputFlags().GetValueInt("verify") == 1)
-            {
-                drv->VerifyBackward();
-            }
+            drv->VerifyBackward();
         }
     }
 

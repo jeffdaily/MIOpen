@@ -7,7 +7,7 @@ RUN dpkg --add-architecture i386
 
 # Add rocm repository
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl apt-utils wget
-RUN curl https://raw.githubusercontent.com/RadeonOpenCompute/ROCm-docker/develop/add-rocm.sh | bash
+RUN curl https://raw.githubusercontent.com/RadeonOpenCompute/ROCm-docker/master/add-rocm.sh | bash
 
 # Install dependencies required to build hcc
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated \
@@ -46,6 +46,10 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Setup ubsan environment to printstacktrace
+RUN ln -s /usr/bin/llvm-symbolizer-3.8 /usr/local/bin/llvm-symbolizer
+ENV UBSAN_OPTIONS=print_stacktrace=1
+
 # Install an init system
 RUN wget https://github.com/Yelp/dumb-init/releases/download/v1.2.0/dumb-init_1.2.0_amd64.deb
 RUN dpkg -i dumb-init_*.deb && rm dumb-init_*.deb
@@ -58,9 +62,9 @@ ADD cmake/mingw-toolchain.cmake $PREFIX/x86_64-w64-mingw32/cmake/toolchain.cmake
 RUN cget -p $PREFIX/x86_64-w64-mingw32 init -t $PREFIX/x86_64-w64-mingw32/cmake/toolchain.cmake
 
 # Build hcc
-RUN git clone https://github.com/RadeonOpenCompute/hcc.git -b roc-1.7.x /hcc && \
+RUN git clone https://github.com/RadeonOpenCompute/hcc.git -b clang_tot_upgrade /hcc && \
     cd hcc && \
-    git reset --hard 0faf3b594c0add0a05b26a7894744a943dc7b44c && \
+    git reset --hard 5a607e6e3c04c23c83d5c78d9eae5aaa4b8c2998 && \
     git submodule init && \
     git submodule update --recursive && \
     cget -p $PREFIX install hcc,. && cd .. && rm -rf /hcc
@@ -70,20 +74,12 @@ RUN ln -s $PREFIX /opt/rocm/hip
 RUN ln -s $PREFIX /opt/rocm/hcc
 
 # Build using hcc
-RUN cget -p $PREFIX init --cxx $PREFIX/bin/hcc
-
-# Install cppcheck
-RUN cget -p $PREFIX install danmar/cppcheck@1.81
-
-# Install hip
-RUN cget -p $PREFIX install ROCm-Developer-Tools/HIP@852d5ae46ce1f62f4c5fdab89445d60f7464d965
-
-RUN cget -p $PREFIX install pfultz2/rocm-recipes
+RUN cget -p $PREFIX init --cxx $PREFIX/bin/hcc --std=c++14
 
 # Install dependencies
 ADD dev-requirements.txt /dev-requirements.txt
+ADD requirements.txt /requirements.txt
 RUN CXXFLAGS='-isystem $PREFIX/include' cget -p $PREFIX install -f /dev-requirements.txt
-RUN cget -p $PREFIX install RadeonOpenCompute/clang-ocl@a180592885ecae5b8beadf667c633c246cec82b6
 
 # Install doc requirements
 ADD doc/requirements.txt /doc-requirements.txt
@@ -91,14 +87,14 @@ RUN pip install -r /doc-requirements.txt
 
 # Install windows opencl
 RUN cget -p $PREFIX/x86_64-w64-mingw32/opencl init -t $PREFIX/x86_64-w64-mingw32/cmake/toolchain.cmake
-RUN cget install -p $PREFIX/x86_64-w64-mingw32/opencl KhronosGroup/OpenCL-Headers@master -X header -DINCLUDE_DIR=opencl22
-RUN cget install -p $PREFIX/x86_64-w64-mingw32/opencl pfultz2/OpenCL-ICD-Loader@master
+# RUN cget install -p $PREFIX/x86_64-w64-mingw32/opencl KhronosGroup/OpenCL-Headers@master -X header -DINCLUDE_DIR=opencl22
+# RUN cget install -p $PREFIX/x86_64-w64-mingw32/opencl pfultz2/OpenCL-ICD-Loader@master
 
 # Install windows dependencies
 RUN cget -p $PREFIX/x86_64-w64-mingw32 install pfultz2/rocm-recipes
 RUN cget -p $PREFIX/x86_64-w64-mingw32 install -X header meganz/mingw-std-threads@dad05201ad4e096c5d1b2043081f412aeb8f5efb
 RUN ln -s $PREFIX/x86_64-w64-mingw32/include/mingw.thread.h $PREFIX/x86_64-w64-mingw32/include/thread 
-# RUN CXXFLAGS='-I $PREFIX/x86_64-w64-mingw32/include' AMDAPPSDKROOT=$PREFIX/x86_64-w64-mingw32/opencl cget -p $PREFIX/x86_64-w64-mingw32 install -f /dev-requirements.txt
+# RUN CXXFLAGS='-I $PREFIX/x86_64-w64-mingw32/include' AMDAPPSDKROOT=$PREFIX/x86_64-w64-mingw32/opencl cget -p $PREFIX/x86_64-w64-mingw32 install -f /requirements.txt
 
 # Setup wine
 RUN mkdir -p /jenkins

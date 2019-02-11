@@ -48,12 +48,16 @@
 
 namespace miopen {
 
-#ifndef NDEBUG
-static void dump_kernel_params(const std::string& program_name,
-                               const std::string& kernel_name,
-                               const std::vector<size_t>& vld,
-                               const std::vector<size_t>& vgd,
-                               const std::string& params)
+static std::ostream& operator<<(std::ostream& os, const std::vector<size_t>& v)
+{
+    return LogRange(os, v, ",");
+}
+
+static void AddKernelDumpKernelParams(const std::string& program_name,
+                                      const std::string& kernel_name,
+                                      const std::vector<size_t>& vld,
+                                      const std::vector<size_t>& vgd,
+                                      const std::string& params)
 {
     const char* keys[] = {"MLO_FILTER_SIZE0",
                           "MLO_FILTER_SIZE1",
@@ -69,18 +73,18 @@ static void dump_kernel_params(const std::string& program_name,
                           "MLO_N_IN_CHNLS",
                           "MLO_N_OUT_CHNLS"};
     int value[sizeof(keys) / sizeof(keys[0])] = {0};
-    for(const char* p = params.c_str(); p && (p = strstr(p, "-D")) != nullptr;)
+    for(const char* p = params.c_str(); p != nullptr && (p = strstr(p, "-D")) != nullptr;)
     {
         p += (p[2] == ' ') ? 3 : 2;
         const char* q = strstr(p, "=");
-        if(!q)
+        if(q == nullptr)
             break;
         q++;
         for(int i = 0; i < sizeof(keys) / sizeof(keys[0]); i++)
         {
-            if(!strncmp(p, keys[i], strlen(keys[i])))
+            if(strncmp(p, keys[i], strlen(keys[i])) == 0)
             {
-                value[i - ((i >= 9) ? 9 : 0)] = atoi(q);
+                value[i - ((i >= 9) ? 9 : 0)] = static_cast<int>(strtol(q, nullptr, 10));
                 break;
             }
         }
@@ -89,44 +93,65 @@ static void dump_kernel_params(const std::string& program_name,
     int msize = value[0] * value[1] * value[2] * value[3];
     int isize = value[4] * value[2] * value[5] * value[6];
     int osize = value[4] * value[3] * value[7] * value[8];
-    std::cout << "runcl " << params << " src/Kernels/" << program_name << " -k " << kernel_name
-              << " -dumpilisa -r 10"
-              << " if#" << isize * 4 << ": if#" << msize * 4 << ": if#" << osize * 4 << ": iv#0 ";
-    miopen::LogRange(std::cout, vgd, ",") << "/";
-    miopen::LogRange(std::cout, vld, ",") << std::endl;
+    MIOPEN_LOG_I2("runcl " << program_name << " -k " << kernel_name << " -dumpilisa -r 10"
+                           << " if#"
+                           << isize * 4
+                           << ": if#"
+                           << msize * 4
+                           << ": if#"
+                           << osize * 4
+                           << ": iv#0 "
+                           << vgd
+                           << "/"
+                           << vld
+                           << ' '
+                           << params);
 }
-#endif
 
-Kernel KernelCache::GetKernel(const std::string& algorithm, const std::string& network_config)
+const std::vector<Kernel>& KernelCache::GetKernels(const std::string& algorithm,
+                                                   const std::string& network_config)
 {
 
     std::pair<std::string, std::string> key = std::make_pair(algorithm, network_config);
-#ifndef NDEBUG
-    std::cout << "key: " << key.first << " " << key.second << std::endl;
-#endif
 
-    auto kernel_iterator = kernel_map.find(key);
-    if(kernel_iterator != kernel_map.end())
+    const auto it = kernel_map.find(key);
+    if(it != kernel_map.end())
     {
-        return kernel_iterator->second;
+        MIOPEN_LOG_I2(it->second.size() << " kernels for key: " << key.first << " \"" << key.second
+                                        << '\"');
+        return it->second;
     }
-    else
-    {
-        MIOPEN_THROW("looking for default kernel (does not exist): " + algorithm + ", " +
-                     network_config);
-    }
+
+    static const std::vector<Kernel> empty{};
+    MIOPEN_LOG_I2("0 kernels for key: " << key.first << " \"" << key.second << '\"');
+    return empty;
 }
 
-Kernel KernelCache::GetKernel(Handle& h,
+bool KernelCache::HasKernels(const std::string& algorithm, const std::string& network_config) const
+{
+    const auto key = std::make_pair(algorithm, network_config);
+#ifndef NDEBUG
+    MIOPEN_LOG_I("Key: " << key.first << " \"" << key.second << '\"');
+#endif
+    const auto it = kernel_map.find(key);
+    if(it == kernel_map.end())
+        return false;
+
+    assert(it->second.size() > 0 &&
+           "There should be at least one kernel in kernel cache if an entry exists");
+    return true;
+}
+
+Kernel KernelCache::AddKernel(Handle& h,
                               const std::string& algorithm,
                               const std::string& network_config,
                               const std::string& program_name,
                               const std::string& kernel_name,
                               const std::vector<size_t>& vld,
                               const std::vector<size_t>& vgd,
-                              std::string params)
+                              std::string params,
+                              std::size_t cache_index)
 {
-
     if(params.length() > 0)
     {
         // Ensure only one space after the -cl-std.
@@ -135,15 +160,11 @@ Kernel KernelCache::GetKernel(Handle& h,
         {
             params = " " + params;
         }
-#ifndef NDEBUG
-        dump_kernel_params(program_name, kernel_name, vld, vgd, params);
-#endif
     }
 
-    std::pair<std::string, std::string> key = std::make_pair(algorithm, network_config);
-#ifndef NDEBUG
-    std::cout << "key: " << key.first << ',' << key.second << std::endl;
-#endif
+    const std::pair<std::string, std::string> key = std::make_pair(algorithm, network_config);
+    if(!network_config.empty() || !algorithm.empty()) // Don't log only _empty_ keys.
+        MIOPEN_LOG_I2("Key: " << key.first << " \"" << key.second << '\"');
 
     Program program;
 
@@ -154,20 +175,47 @@ Kernel KernelCache::GetKernel(Handle& h,
     }
     else
     {
-        bool is_kernel_str = algorithm.find("GEMM") != std::string::npos;
-#ifndef NDEBUG
-        if(is_kernel_str == false)
-            std::cout << "Kernel filename: " << program_name << "\n";
-#endif
+        const bool is_kernel_str = algorithm.find("GEMM") != std::string::npos;
+        if(miopen::IsLogging(miopen::LoggingLevel::Info2))
+        {
+            AddKernelDumpKernelParams(is_kernel_str ? std::string("(source provided by gemm)")
+                                                    : program_name,
+                                      kernel_name,
+                                      vld,
+                                      vgd,
+                                      params);
+        }
         program = h.LoadProgram(program_name, params, is_kernel_str);
         program_map[std::make_pair(program_name, params)] = program;
     }
     Kernel kernel{program, kernel_name, vld, vgd};
     if(!network_config.empty() && !algorithm.empty())
     {
-        kernel_map[key] = kernel;
+        this->AddKernel(key, kernel, cache_index);
     }
     return kernel;
+}
+
+void KernelCache::AddKernel(Key key, Kernel k, std::size_t cache_index)
+{
+    auto&& v = kernel_map[key];
+    if(cache_index >= v.size())
+    {
+        v.resize(cache_index + 1);
+    }
+    v[cache_index] = k;
+}
+
+void KernelCache::ClearKernels(const std::string& algorithm, const std::string& network_config)
+{
+    assert(!network_config.empty() && !algorithm.empty());
+    const std::pair<std::string, std::string> key = std::make_pair(algorithm, network_config);
+    auto&& v = this->kernel_map[key];
+    if(!v.empty())
+    {
+        MIOPEN_LOG_I2(v.size() << " kernels for key: " << key.first << " \"" << key.second << '\"');
+    }
+    v.clear();
 }
 
 KernelCache::KernelCache() {}

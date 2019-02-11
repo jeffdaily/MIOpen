@@ -35,21 +35,50 @@
 #include <vector>
 #include <ostream>
 
+#include <miopen/logger.hpp>
 #include <miopen/find_controls.hpp>
-#include <miopen/db_record.hpp>
 #include <miopen/mlo_internal.hpp>
 #include <miopen/legacy_exhaustive_search.hpp>
-#include <miopen/make_unique.hpp>
 #include <miopen/env.hpp>
 #include <miopen/type_name.hpp>
 #include <miopen/miopen.h>
+#include <miopen/stringutils.hpp> // for IsPureOpenCLSolution()
 
 namespace miopen {
 
+/// Enables "Find first convolution only" mode. This mode is intended for
+/// triaging problems which may reveal after PR #781. Globally disables
+/// lookup for _all_ suitable convolutions (introduced in PR #781),
+/// so lookup is stopped as soon as the first applicable Solution found.
+/// Also enables performance filtering heuristics.
+MIOPEN_DECLARE_ENV_VAR(MIOPEN_DEBUG_FIND_FIRST_CONV)
+
+/// Allows to explicitly disable performance filtering heuristics
+/// in "Find first convolution only" mode.
 MIOPEN_DECLARE_ENV_VAR(MIOPEN_DEBUG_AMD_ASM_KERNELS_PERF_FILTERING)
 
-namespace solver {
+/// \todo Remove MIOPEN_DEBUG_FIND_FIRST_CONV together with
+/// MIOPEN_DEBUG_AMD_ASM_KERNELS_PERF_FILTERING and all related code
+/// as soon as "find all" mode is stable so backward compatibility mode
+/// is not needed (for triaging etc) anymore.
 
+/// It seems that legacy OpenCL solvers imply that only the 1st one
+/// applicable solution shall be used. The rest of OpenCL
+/// solutions, in spite of that their IsApplicabe() return TRUE,
+/// may fail (1) during exhaustive search, (2) during compilation,
+/// (3) on execution (like LDS overallocation) or (4) may reveal precision
+/// problems. These problems impedes finding and using the really fastest OpenCL solution.
+
+/// \todo Remove env.var (workaround is OFF by default):
+MIOPEN_DECLARE_ENV_VAR(MIOPEN_OPENCL_WORKAROUND_FIND_ALL_CONV_DIRECT_FWD)
+/// \todo Remove env.var (workaround is OFF by default):
+MIOPEN_DECLARE_ENV_VAR(MIOPEN_OPENCL_WORKAROUND_FIND_ALL_CONV_DIRECT_BWD)
+/// \todo Remove env.var (workaround is OFF by default):
+MIOPEN_DECLARE_ENV_VAR(MIOPEN_OPENCL_WORKAROUND_FIND_ALL_CONV_DIRECT_WRW)
+
+namespace solver {
+/// \todo Move wave_size into abstraction wich represent GPU information
+const int wave_size = 64;
 /// Describes a kernel source and whatever information required in order
 /// to build and run it (the former is unused for binary kernels).
 struct KernelInfo
@@ -70,24 +99,25 @@ struct KernelInfo
 /// Shall be refactored (possibly, to a class hierarchy).
 struct ConvSolution
 {
+    /// \todo Use better name than construction_params.
     std::vector<KernelInfo> construction_params; // impl may consist of multiple kernels.
     miopenStatus_t status;
-    int passes;
+    std::string solver_id;
 
     size_t workspce_sz;
-    int grp_tile1;
-    int grp_tile0;
-    int in_tile1;
-    int in_tile0;
-    int out_pix_tile1;
-    int out_pix_tile0;
-    int n_out_pix_tiles;
-    int n_in_data_tiles;
-    int n_stacks;
+    int grp_tile1;       // total number ALUs per group
+    int grp_tile0;       // total number ALUs per group
+    int in_tile1;        // size of in-tile in local memory
+    int in_tile0;        // size of in-tile in local memory
+    int out_pix_tile1;   // # of generated pixels per output per wk-item  (ALU)
+    int out_pix_tile0;   // # of generated pixels per output per wk-item  (ALU)
+    int n_out_pix_tiles; // # output pixel tiles per wk-item (ALU)
+    int n_in_data_tiles; // # of blocks of different inputs in LDS
+    int n_stacks;        // # of diff stacks (part of batch).
 
-    ConvSolution(miopenStatus_t status_ = miopenStatusSuccess, int passes_ = 1)
+    ConvSolution(miopenStatus_t status_ = miopenStatusSuccess)
         : status(status_),
-          passes(passes_),
+          solver_id("<unknown>"),
           workspce_sz(0),
           grp_tile1(-1),
           grp_tile0(-1),
@@ -103,6 +133,8 @@ struct ConvSolution
 
     inline bool Succeeded() const { return status == miopenStatusSuccess; }
 };
+
+std::ostream& operator<<(std::ostream& os, const ConvSolution& s);
 
 template <class Solver>
 std::string ComputeSolverDbId(Solver)
@@ -122,21 +154,20 @@ const std::string& SolverDbId(Solver solver)
     return result;
 }
 
-template <class Solver, class Context>
-auto FindSolutionImpl(rank<1>, Solver s, const Context& context, DbRecord& dbRecord)
+template <class Solver, class Context, class Db>
+auto FindSolutionImpl(rank<1>, Solver s, const Context& context, Db& db)
     -> decltype(s.GetSolution(context, s.Search(context)))
 {
-    const FindEnforce enforce = GetFindEnforce();
+    const FindEnforce enforce;
     MIOPEN_LOG_I(SolverDbId(s));
-    if(enforce == FindEnforce::Clean)
+    if(enforce.IsDbClean(context))
     {
-        if(dbRecord.Remove(SolverDbId(s)))
+        if(db.Remove(context, SolverDbId(s)))
             MIOPEN_LOG_W("Perf Db: record removed: " << SolverDbId(s) << ", enforce: " << enforce);
     }
     else
     {
-        if((context.do_search && enforce == FindEnforce::DbUpdate) ||
-           enforce == FindEnforce::SearchDbUpdate)
+        if((context.do_search || enforce.IsSearch(context)) && enforce.IsDbUpdate(context))
         {
             MIOPEN_LOG_W("Perf Db: load skipped: " << SolverDbId(s) << ", enforce: " << enforce);
         }
@@ -144,26 +175,25 @@ auto FindSolutionImpl(rank<1>, Solver s, const Context& context, DbRecord& dbRec
         {
             using PerformanceConfig = decltype(s.GetPerformanceConfig(context));
             PerformanceConfig config{};
-            if(dbRecord.Load(SolverDbId(s), config))
+            if(db.Load(context, SolverDbId(s), config))
             {
                 MIOPEN_LOG_I("Perf Db: record loaded: " << SolverDbId(s));
                 if(s.IsValidPerformanceConfig(context, config))
                 {
                     return s.GetSolution(context, config);
                 }
-                MIOPEN_LOG_E("Invalid config loaded from Perf Db: " << SolverDbId(s) << ": "
+                MIOPEN_LOG_W("Invalid config loaded from Perf Db: " << SolverDbId(s) << ": "
                                                                     << config);
             }
         }
 
-        if(context.do_search || enforce == FindEnforce::Search ||
-           enforce == FindEnforce::SearchDbUpdate) // TODO: Make it a customization point
+        if(context.do_search || enforce.IsSearch(context)) // TODO: Make it a customization point
         {
             MIOPEN_LOG_I("Starting search: " << SolverDbId(s) << ", enforce: " << enforce);
             try
             {
                 auto c = s.Search(context);
-                dbRecord.Store(SolverDbId(s), c);
+                db.Update(context, SolverDbId(s), c);
                 return s.GetSolution(context, c);
             }
             catch(const miopen::Exception& ex)
@@ -172,14 +202,15 @@ auto FindSolutionImpl(rank<1>, Solver s, const Context& context, DbRecord& dbRec
             }
         }
     }
+
     return s.GetSolution(context, s.GetPerformanceConfig(context));
 }
 
-template <class Solver, class Context>
-auto FindSolutionImpl(rank<0>, Solver s, const Context& context, DbRecord&)
+template <class Solver, class Context, class Db>
+auto FindSolutionImpl(rank<0>, Solver s, const Context& context, Db&)
     -> decltype(s.GetSolution(context))
 {
-    MIOPEN_LOG_I("Not searchable: " << SolverDbId(s));
+    MIOPEN_LOG_I(SolverDbId(s) << " (not searchable)");
     return s.GetSolution(context);
 }
 
@@ -189,22 +220,24 @@ auto FindSolutionImpl(rank<0>, Solver s, const Context& context, DbRecord&)
 /// solution-specific parameters and returns the Solution object.
 /// Could take long if an exhaustive search is requested/performed.
 /// May read/write perfDb.
-template <class Solver, class Context>
-ConvSolution FindSolution(Solver s, const Context& context, DbRecord& dbRecord)
+template <class Solver, class Context, class Db>
+ConvSolution FindSolution(Solver s, const Context& context, Db& db)
 {
     static_assert(std::is_empty<Solver>{} && std::is_trivially_constructible<Solver>{},
                   "Solver must be stateless");
     // TODO: This assumes all solutions are ConvSolution
-    return FindSolutionImpl(rank<1>{}, s, context, dbRecord);
+    auto solution      = FindSolutionImpl(rank<1>{}, s, context, db);
+    solution.solver_id = SolverDbId(s);
+    return solution;
 }
 
-// Search for a solution among many solvers
-template <class... Solvers, class Context>
-auto SearchForSolution(const Context& search_params, miopen::DbRecord dbRecord) ->
-    typename std::common_type<decltype(FindSolution(Solvers{}, search_params, dbRecord))...>::type
+// Search for the 1st applicable solution among many solvers
+template <class... Solvers, class Context, class Db>
+auto SearchForSolution(const Context& search_params, Db db) ->
+    typename std::common_type<decltype(FindSolution(Solvers{}, search_params, db))...>::type
 {
-    using Solution = typename std::common_type<decltype(
-        FindSolution(Solvers{}, search_params, dbRecord))...>::type;
+    using Solution =
+        typename std::common_type<decltype(FindSolution(Solvers{}, search_params, db))...>::type;
     Solution solution{miopenStatusUnknownError};
 
 // Using const here causes gcc to ICE
@@ -213,21 +246,102 @@ auto SearchForSolution(const Context& search_params, miopen::DbRecord dbRecord) 
 #endif
         auto no_perf_filtering = miopen::IsDisabled(MIOPEN_DEBUG_AMD_ASM_KERNELS_PERF_FILTERING{});
 
-    // clang-format off
-    MIOPEN_STATIC_FOR_EACH(solver, Solvers{}, {
-        if(!solution.Succeeded() && solver.IsApplicable(search_params) &&
-           (no_perf_filtering || solver.IsFast(search_params)))
-        {
-            solution = FindSolution(solver, search_params, dbRecord);
-            if(solution.Succeeded() && !search_params.n_passes && solution.construction_params.empty())
+    miopen::each_args(
+        [&](auto solver) {
+            if(!solution.Succeeded() && solver.IsApplicable(search_params) &&
+               (no_perf_filtering || solver.IsFast(search_params)))
             {
-                MIOPEN_THROW(std::string("Internal error in solver: ") + SolverDbId(solver));
+                solution = FindSolution(solver, search_params, db);
+                if(solution.Succeeded() && solution.construction_params.empty())
+                {
+                    MIOPEN_THROW(std::string("Internal error in solver: ") + SolverDbId(solver));
+                }
             }
-        }
-    });
-    // clang-format on
+        },
+        Solvers{}...);
 
     return solution;
+}
+
+template <class Solution>
+static inline bool IsPureOpenCLSolution(const Solution& s)
+{
+    for(auto& k : s.construction_params)
+    {
+        if(!miopen::EndsWith(k.kernel_file, ".cl"))
+            return false;
+    }
+    return true;
+}
+
+// Search for all applicable solutions among many solvers
+template <class... Solvers, class Context, class Db, class Solution = miopen::solver::ConvSolution>
+std::vector<Solution> SearchForAllSolutions(const Context& search_params, Db db)
+{
+    std::vector<Solution> ss;
+
+// Using const here causes gcc to ICE
+#if(!defined(__GNUC__) || defined(__clang__))
+    const
+#endif
+        auto no_perf_filtering =
+            miopen::IsDisabled(MIOPEN_DEBUG_AMD_ASM_KERNELS_PERF_FILTERING{}) ||
+            !miopen::IsEnabled(MIOPEN_DEBUG_FIND_FIRST_CONV{});
+
+    bool skip_the_rest = false;
+    miopen::each_args( // clang-format off
+        [&](auto solver) { // cppcheck-suppress knownConditionTrueFalse
+            if(!skip_the_rest
+               && solver.IsApplicable(search_params)
+               && (no_perf_filtering || solver.IsFast(search_params)))
+            { // clang-format on
+                const Solution s = FindSolution(solver, search_params, db);
+                if(s.Succeeded())
+                {
+                    ss.push_back(s);
+                    MIOPEN_LOG_I2(SolverDbId(solver) << ": Success.");
+
+                    if(miopen::IsEnabled(MIOPEN_DEBUG_FIND_FIRST_CONV{}))
+                    {
+                        skip_the_rest = true;
+                    }
+                    else if(IsPureOpenCLSolution(s))
+                    {
+                        /// \todo (algorithm == Direct) is not checked here.
+                        /// This is ok so far, as SearchForAllSolutions() is used only for direct
+                        /// convolutions (for now).
+                        if((search_params.direction.IsForward() &&
+                            miopen::IsEnabled(
+                                MIOPEN_OPENCL_WORKAROUND_FIND_ALL_CONV_DIRECT_FWD{})) ||
+                           (search_params.direction.IsBackwardData() &&
+                            miopen::IsEnabled(
+                                MIOPEN_OPENCL_WORKAROUND_FIND_ALL_CONV_DIRECT_BWD{})) ||
+                           (search_params.direction.IsBackwardWrW() &&
+                            miopen::IsEnabled(MIOPEN_OPENCL_WORKAROUND_FIND_ALL_CONV_DIRECT_WRW{})))
+                        {
+                            skip_the_rest = true;
+                        }
+                    }
+                }
+                else
+                {
+                    /// \todo If Solver is applicable it must provide an appropriate Solution.
+                    /// This is not the case for some 20x5 convolutions (and possibly others).
+                    /// Normally we should not get here and message level should be Error.
+                    /// For now, let's use Info (not Warning) level to avoid
+                    /// flooding the console.
+                    MIOPEN_LOG_I(SolverDbId(solver)
+                                 << ": [Warning] Applicable Solver not succeeded.");
+                }
+            }
+            else
+            {
+                MIOPEN_LOG_I2(SolverDbId(solver) << ": "
+                                                 << (skip_the_rest ? "Skipped" : "Not applicable"));
+            }
+        },
+        Solvers{}...);
+    return ss;
 }
 
 /// Base class for problem solvers.
@@ -262,10 +376,10 @@ struct SolverBase
     /// Returns true if solution can work on given SW/HW platform (runtime/device)
     /// and provides correct result for the problem config.
     ///
-    /// Every SolverBase which IsApplicable() for some problem config, must be able to
-    /// GetPerformanceConfig() in a way that GetSolution() would return valid
+    /// Every SolverBase which IsApplicable() for some problem config must be able to
+    /// GetPerformanceConfig() so that GetSolution() would return valid
     /// solution for a problem (i.e. convolution). In other words, if a Solution
-    /// says "i'am suitable" for a problem, it agrees to solve the problem correctly.
+    /// says "I'm suitable" for a problem, it agrees to solve that problem correctly.
     bool IsApplicable(const Context&) const { return true; }
 
     /// Legacy euristic method which shall return false when a solution
@@ -281,13 +395,211 @@ struct SolverBase
     /// Searchable solvers provide a GetSolution that takes a Context and PerformanceConfig
     /// ConvSolution GetSolution(const ConvolutionContext& params,
     ///                          const PerformanceConfig& config) const;
+
+    /// Temporary solver-specific method until we have generic means for running solutions.
+    /// int RunAndMeasureSolution(miopen::Handle& profile_h,
+    ///                          Data_t bot_ocl_buf,
+    ///                          Data_t top_ocl_buf,
+    ///                          Data_t wei_ocl_buf,
+    ///                          Data_t bias_ocl_buf,
+    ///                          const ConvolutionContext& params,
+    ///                          const ConvSolution& solution,
+    ///                          float& elapsed_time) const;
+};
+
+struct PerformanceConfigConvAsm3x3U : Serializable<PerformanceConfigConvAsm3x3U>
+{
+    int limit_wave_cnt;        // [0..9]
+    int filters_per_wave;      // [1..8]
+    int output_lines_per_wave; // [1..8]
+
+    PerformanceConfigConvAsm3x3U(int lwc, int fpw, int olpw);
+    PerformanceConfigConvAsm3x3U() : PerformanceConfigConvAsm3x3U(-1, -1, -1) {}
+    PerformanceConfigConvAsm3x3U(bool) : PerformanceConfigConvAsm3x3U(0, 1, 1) {}
+
+    template <class Self, class F>
+    static void Visit(Self&& self, F f)
+    {
+        f(self.limit_wave_cnt, "limit_wave_cnt");
+        f(self.filters_per_wave, "filters_per_wave");
+        f(self.output_lines_per_wave, "output_lines_per_wave");
+    }
+
+    void EuristicInit(const ConvolutionContext& config);
+    bool IsValidValue() const;
+    bool SetNextValue();
+    bool IsValid(const ConvolutionContext& config) const;
+    bool operator==(const PerformanceConfigConvAsm3x3U& other) const;
+    std::string ToString() const;
 };
 
 struct ConvAsm3x3U : SolverBase<ConvolutionContext>
 {
     bool IsApplicable(const ConvolutionContext& params) const;
     bool IsFast(const ConvolutionContext& params) const;
-    ConvSolution GetSolution(const ConvolutionContext& params) const;
+    PerformanceConfigConvAsm3x3U GetPerformanceConfig(const ConvolutionContext&) const;
+    bool IsValidPerformanceConfig(const ConvolutionContext&,
+                                  const PerformanceConfigConvAsm3x3U&) const;
+    PerformanceConfigConvAsm3x3U Search(const ConvolutionContext&) const;
+    ConvSolution GetSolution(const ConvolutionContext& params,
+                             const PerformanceConfigConvAsm3x3U& config,
+                             bool disableConfigOverrideFromEnv = false) const;
+    int RunAndMeasureSolution(miopen::Handle& profile_h,
+                              Data_t bot_ocl_buf,
+                              Data_t top_ocl_buf,
+                              Data_t wei_ocl_buf,
+                              Data_t bias_ocl_buf,
+                              const ConvolutionContext& params,
+                              const ConvSolution& solution,
+                              float& elapsed_time) const;
+};
+
+struct PerformanceConfigConvActivAsm1x1U : Serializable<PerformanceConfigConvActivAsm1x1U>
+{
+    // ------------------- // Full set          Optimized       Spare
+    // ----------------------------------------------------------------------------
+    int read_size;         // [1..4]            <same>          <same>
+    int k_mult;            // 1,[4,8,12..32]    16,32           1,4
+    int chunks_per_wave;   // [1..16]           [1..8]          <same>
+    int chunk_size;        // 2^n[1..64]        2^n[16..64]     1,4
+    int n_blocks_per_wave; // [1..8]            [1..4]          <same>
+    int waves_in_group;    // [1..8]            [1..4]          <same>
+    bool use_spare_set;
+
+    PerformanceConfigConvActivAsm1x1U(int, int, int, int, int, int, bool);
+    PerformanceConfigConvActivAsm1x1U()
+        : PerformanceConfigConvActivAsm1x1U(-1, -1, -1, -1, -1, -1, false)
+    {
+    }
+    PerformanceConfigConvActivAsm1x1U(bool spare)
+        : PerformanceConfigConvActivAsm1x1U(1, 1, 1, 1, 1, 1, spare)
+    {
+    }
+
+    template <class Self, class F>
+    static void Visit(Self&& self, F f)
+    {
+        f(self.read_size, "read_size");
+        f(self.k_mult, "k_mult");
+        f(self.chunks_per_wave, "chunks_per_wave");
+        f(self.chunk_size, "chunk_size");
+        f(self.n_blocks_per_wave, "n_blocks_per_wave");
+        f(self.waves_in_group, "waves_in_group");
+    }
+
+    // clang-format off
+    int GetReadSize() const { return read_size; }
+    int GetKMult() const { return k_mult; }
+    int GetChunksPerWave() const { return chunks_per_wave; }
+    int GetChunkSize() const { return chunk_size; }
+    int GetNBlocksPerWave() const { return n_blocks_per_wave; }
+    int GetWavesInGroup() const { return waves_in_group; }
+    int GetNPerGpr() const { assert(chunk_size); return 64 / chunk_size; }
+    // clang-format on
+
+    void EuristicInit(const ConvolutionContext& config);
+    bool IsValidValue() const;
+    bool SetNextValue();
+    bool IsValid(const ConvolutionContext& config) const;
+    bool operator==(const PerformanceConfigConvActivAsm1x1U& other) const;
+    std::string ToString() const;
+    bool IsValidForProblem(const ConvolutionContext& config) const;
+};
+
+struct ConvActivAsm1x1U : SolverBase<ConvolutionContext>
+{
+    PerformanceConfigConvActivAsm1x1U GetPerformanceConfig(const ConvolutionContext&) const;
+    bool IsValidPerformanceConfig(const ConvolutionContext&,
+                                  const PerformanceConfigConvActivAsm1x1U&) const;
+    PerformanceConfigConvActivAsm1x1U Search(const ConvolutionContext&) const;
+    bool IsApplicable(const ConvolutionContext& params) const;
+    bool IsFast(const ConvolutionContext& params) const;
+    ConvSolution GetSolution(const ConvolutionContext& params,
+                             const PerformanceConfigConvActivAsm1x1U& config,
+                             bool disableConfigOverrideFromEnv = false) const;
+    int RunAndMeasureSolution(miopen::Handle& profile_h,
+                              Data_t bot_ocl_buf,
+                              Data_t top_ocl_buf,
+                              Data_t wei_ocl_buf,
+                              Data_t bias_ocl_buf,
+                              const ConvolutionContext& params,
+                              const ConvSolution& solution,
+                              float& elapsed_time) const;
+};
+
+struct PerformanceConfigConvAsm1x1U : Serializable<PerformanceConfigConvAsm1x1U>
+{
+    // ----------------- // Full set          Optimized       Spare
+    // ----------------------------------------------------------------------------
+    int read_size;       // [1..4]            <same>          <same>
+    int k_mult;          // 1,[4,8,12..32]    16,32           1,4
+    int chunks_per_wave; // [1..16]           [1..8]          <same>
+    int chunk_size;      // 2^n[1..64]        2^n[16..64]     1,4
+    int n_mult;          // [1..8]            [1..4]          <same>
+    int c_mult;          // 2^n[1..32]        2^n[1,2]        <same>
+    int waves_in_group;  // [1..8]            [1..4]          <same>
+    bool use_spare_set;
+
+    PerformanceConfigConvAsm1x1U(int, int, int, int, int, int, int, bool);
+    PerformanceConfigConvAsm1x1U() : PerformanceConfigConvAsm1x1U(-1, -1, -1, -1, -1, -1, -1, false)
+    {
+    }
+    PerformanceConfigConvAsm1x1U(bool spare)
+        : PerformanceConfigConvAsm1x1U(1, 1, 1, 1, 1, 1, 1, spare)
+    {
+    }
+
+    template <class Self, class F>
+    static void Visit(Self&& self, F f)
+    {
+        f(self.read_size, "read_size");
+        f(self.k_mult, "k_mult");
+        f(self.chunks_per_wave, "chunks_per_wave");
+        f(self.chunk_size, "chunk_size");
+        f(self.n_mult, "n_mult");
+        f(self.c_mult, "c_mult");
+        f(self.waves_in_group, "waves_in_group");
+    }
+
+    // clang-format off
+    int GetReadSize() const { return read_size; }
+    int GetKMult() const { return k_mult; }
+    int GetChunksPerWave() const { return chunks_per_wave; }
+    int GetChunkSize() const { return chunk_size; }
+    int GetNMult() const { return n_mult; }
+    int GetCMult() const { return c_mult; }
+    int GetWavesInGroup() const { return waves_in_group; }
+    int GetNPerGpr() const { assert(chunk_size); return 64 / chunk_size; }
+    // clang-format on
+
+    void EuristicInit(const ConvolutionContext& config);
+    bool IsValidValue() const;
+    bool SetNextValue();
+    bool IsValid(const ConvolutionContext& config) const;
+    bool operator==(const PerformanceConfigConvAsm1x1U& other) const;
+    std::string ToString() const;
+    bool IsValidForProblem(const ConvolutionContext& config) const;
+};
+
+struct ConvAsm1x1U : SolverBase<ConvolutionContext>
+{
+    PerformanceConfigConvAsm1x1U GetPerformanceConfig(const ConvolutionContext&) const;
+    bool IsValidPerformanceConfig(const ConvolutionContext&,
+                                  const PerformanceConfigConvAsm1x1U&) const;
+    PerformanceConfigConvAsm1x1U Search(const ConvolutionContext&) const;
+    bool IsApplicable(const ConvolutionContext& params) const;
+    bool IsFast(const ConvolutionContext& params) const;
+    ConvSolution GetSolution(const ConvolutionContext& params,
+                             const PerformanceConfigConvAsm1x1U& config,
+                             bool disableConfigOverrideFromEnv = false) const;
+    int RunAndMeasureSolution(miopen::Handle& profile_h,
+                              Data_t bot_ocl_buf,
+                              Data_t top_ocl_buf,
+                              Data_t wei_ocl_buf,
+                              Data_t bias_ocl_buf,
+                              const ConvolutionContext& params,
+                              const ConvSolution& solution,
+                              float& elapsed_time) const;
 };
 
 struct ConvAsm5x10u2v2f1 : SolverBase<ConvolutionContext>
@@ -331,14 +643,19 @@ struct ConvOclDirectFwd3x3 : SolverBase<ConvolutionContext>
 struct ConvOclDirectFwdLegacyExhaustiveSearch : SolverBase<ConvolutionContext>
 {
     LegacyPerformanceConfig GetPerformanceConfig(const ConvolutionContext&) const;
-    bool IsValidPerformanceConfig(const ConvolutionContext&, const LegacyPerformanceConfig&) const
-    {
-        return true; // Do not check by default.
-    }
     LegacyPerformanceConfig Search(const ConvolutionContext&) const;
 };
 
 struct ConvOclDirectFwd : ConvOclDirectFwdLegacyExhaustiveSearch
+{
+    bool IsApplicable(const ConvolutionContext& params) const;
+
+    ConvSolution GetSolution(const ConvolutionContext& params,
+                             const LegacyPerformanceConfig& searched_params) const;
+    bool IsValidPerformanceConfig(const ConvolutionContext&, const LegacyPerformanceConfig&) const;
+};
+
+struct ConvOclDirectFwdFused : ConvOclDirectFwd
 {
     ConvSolution GetSolution(const ConvolutionContext& params,
                              const LegacyPerformanceConfig& searched_params) const;
@@ -349,13 +666,10 @@ struct ConvOclDirectFwd1x1 : ConvOclDirectFwdLegacyExhaustiveSearch
     bool IsApplicable(const ConvolutionContext& params) const;
     ConvSolution GetSolution(const ConvolutionContext& params,
                              const LegacyPerformanceConfig& searched_params) const;
-};
-
-struct ConvOclDirectFwdC : ConvOclDirectFwdLegacyExhaustiveSearch
-{
-    bool IsApplicable(const ConvolutionContext& params) const;
-    ConvSolution GetSolution(const ConvolutionContext& params,
-                             const LegacyPerformanceConfig& searched_params) const;
+    bool IsValidPerformanceConfig(const ConvolutionContext&, const LegacyPerformanceConfig&) const
+    {
+        return true;
+    }
 };
 
 struct ConvBinWinograd3x3U : SolverBase<ConvolutionContext>
@@ -383,6 +697,7 @@ struct PerformanceConfigAsmDirect3x3WrW : Serializable<PerformanceConfigAsmDirec
 
     PerformanceConfigAsmDirect3x3WrW(int lwc, int rio, int csz, int kpw, int pld, int npg);
     PerformanceConfigAsmDirect3x3WrW() : PerformanceConfigAsmDirect3x3WrW(-1, -1, -1, -1, -1, -1) {}
+    PerformanceConfigAsmDirect3x3WrW(bool) : PerformanceConfigAsmDirect3x3WrW(0, 0, 8, 1, 1, 1) {}
 
     template <class Self, class F>
     static void Visit(Self&& self, F f)
@@ -401,17 +716,15 @@ struct PerformanceConfigAsmDirect3x3WrW : Serializable<PerformanceConfigAsmDirec
     int GetChunkSize() const { return chunk_size; }
     int GetKPerWave() const { return k_per_wave; }
     int GetPipeLinesDepth() const { return pipe_lines_depth; }
-    int GetNPerGroup() const { return n_per_group; } 
+    int GetNPerGroup() const { return n_per_group; }
     int GetCPerWave() const { assert(chunk_size); return 64 / chunk_size; } // clang-format on
 
     void EuristicInit(const ConvolutionContext& config);
-    bool IsValidRange() const;
+    bool IsValidValue() const;
+    bool SetNextValue();
     bool IsValid(const ConvolutionContext& config) const;
-    // TOOD: Use operator==
-    bool IsEqual(const PerformanceConfigAsmDirect3x3WrW& other) const;
+    bool operator==(const PerformanceConfigAsmDirect3x3WrW& other) const;
     std::string ToString() const;
-
-    friend class VirtualIterator; // Modifies private data when advancing.
 };
 
 struct ConvAsmBwdWrW3x3 : SolverBase<ConvolutionContext>
@@ -423,17 +736,30 @@ struct ConvAsmBwdWrW3x3 : SolverBase<ConvolutionContext>
     bool IsApplicable(const ConvolutionContext& params) const;
     bool IsFast(const ConvolutionContext& params) const;
     ConvSolution GetSolution(const ConvolutionContext& params,
-                             const PerformanceConfigAsmDirect3x3WrW& config) const;
+                             const PerformanceConfigAsmDirect3x3WrW& config,
+                             bool disableConfigOverrideFromEnv = false) const;
+    int RunAndMeasureSolution(miopen::Handle& profile_h,
+                              Data_t bot_ocl_buf,
+                              Data_t top_ocl_buf,
+                              Data_t wei_ocl_buf,
+                              Data_t bias_ocl_buf,
+                              const ConvolutionContext& params,
+                              const ConvSolution& solution,
+                              float& elapsed_time) const;
 };
 
 struct PerformanceConfigConvAsmBwdWrW1x1 : Serializable<PerformanceConfigConvAsmBwdWrW1x1>
 {
-    int c_per_gpr; // {1,2,4,8,16}
-    int c_mult;    // {1,2,4,8,16}
-    int k_per_gpr; // {1,2,4,8,16}
-    int k_mult;    // {1,2,4,8,16}
-    int read_size; // [1..4]
-    int n_per_gpr; // {1,2,4}
+
+    int chunk_size; // {1,2,4,8,16}
+    int c_per_gpr;  // {1,2,4,8,16}
+    int c_mult;     // {1,2,4,8,16}
+    int k_per_gpr;  // {1,2,4,8,16}
+    int k_mult;     // {1,2,4,8,16}
+    int n_per_gpr;  // {1,2,4}
+    int n_part_cnt; // [1..8]
+    int read_size;  // [1..4]
+    bool use_spare_set;
 
     /// The following conditions must be met.
     ///
@@ -453,43 +779,56 @@ struct PerformanceConfigConvAsmBwdWrW1x1 : Serializable<PerformanceConfigConvAsm
     /// - fwd_K := Num output channels for forward convolution (-k).
     ///   For backward, this is actually n_inputs.
 
-    PerformanceConfigConvAsmBwdWrW1x1(
-        int c_per_gpr_, int c_mult_, int k_per_gpr_, int k_mult_, int read_size_, int n_per_gpr_);
-    PerformanceConfigConvAsmBwdWrW1x1() : PerformanceConfigConvAsmBwdWrW1x1(-1, -1, -1, -1, -1, -1)
+    PerformanceConfigConvAsmBwdWrW1x1(int chunk_size_,
+                                      int c_per_gpr_,
+                                      int c_mult_,
+                                      int k_per_gpr_,
+                                      int k_mult_,
+                                      int n_per_gpr_,
+                                      int n_part_cnt_,
+                                      int read_size_,
+                                      bool);
+    PerformanceConfigConvAsmBwdWrW1x1()
+        : PerformanceConfigConvAsmBwdWrW1x1(-1, -1, -1, -1, -1, -1, -1, -1, false)
+    {
+    }
+    PerformanceConfigConvAsmBwdWrW1x1(bool spare)
+        : PerformanceConfigConvAsmBwdWrW1x1(1, 1, 1, 1, 1, 1, 1, 1, spare)
     {
     }
 
     template <class Self, class F>
     static void Visit(Self&& self, F f)
     {
+        f(self.chunk_size, "chunk_size");
         f(self.c_per_gpr, "c_per_gpr");
         f(self.c_mult, "c_mult");
         f(self.k_per_gpr, "k_per_gpr");
         f(self.k_mult, "k_mult");
-        f(self.read_size, "read_size");
         f(self.n_per_gpr, "n_per_gpr");
+        f(self.n_part_cnt, "n_part_cnt");
+        f(self.read_size, "read_size");
     }
 
     // clang-format off
-    int GetNPerGpr() const { return n_per_gpr; }
-    int GetPipeDepth() const { return 1; }
+    int GetChunkSize() const { return chunk_size; }
     int GetCPerGpr() const { return c_per_gpr; }
     int GetCMult() const { return c_mult; }
     int GetKPerGpr() const { return k_per_gpr; }
     int GetKMult() const { return k_mult; }
+    int GetNPerGpr() const { return n_per_gpr; }
+    int GetNPartCnt() const { return n_part_cnt; }
+    int GetHWPerGpr() const {   assert(c_per_gpr); assert(n_per_gpr); assert(chunk_size);  
+                                return wave_size / (c_per_gpr * n_per_gpr * chunk_size); } // "hw" stands for "height-and-width".
     int GetReadSize() const { return read_size; }
-    int GetChunkSize() const { assert(c_per_gpr); return 16 / c_per_gpr; }
-    int GetHwPerGpr() const { assert(n_per_gpr); return 4 / n_per_gpr; } // "hw" stands for "height-and-width".
     // clang-format on
 
     void EuristicInit(const ConvolutionContext& config);
-    bool IsValidRange() const;
+    bool IsValidValue() const;
+    bool SetNextValue();
     bool IsValid(const ConvolutionContext& config) const;
-    // TOOD: Use operator==
-    bool IsEqual(const PerformanceConfigConvAsmBwdWrW1x1& other) const;
+    bool operator==(const PerformanceConfigConvAsmBwdWrW1x1& other) const;
     std::string ToString() const;
-
-    friend class VirtualIteratorWrW1x1; // Modifies private data when advancing.
 };
 
 struct ConvAsmBwdWrW1x1 : SolverBase<ConvolutionContext>
@@ -503,6 +842,14 @@ struct ConvAsmBwdWrW1x1 : SolverBase<ConvolutionContext>
     ConvSolution GetSolution(const ConvolutionContext& params,
                              const PerformanceConfigConvAsmBwdWrW1x1& config,
                              bool disableConfigOverrideFromEnv = false) const;
+    int RunAndMeasureSolution(miopen::Handle& profile_h,
+                              Data_t bot_ocl_buf,
+                              Data_t top_ocl_buf,
+                              Data_t wei_ocl_buf,
+                              Data_t bias_ocl_buf,
+                              const ConvolutionContext& params,
+                              const ConvSolution& solution,
+                              float& elapsed_time) const;
 };
 
 struct ConvOclBwdWrW2 : SolverBase<ConvolutionContext>
@@ -523,7 +870,92 @@ struct ConvOclBwdWrW1x1 : SolverBase<ConvolutionContext>
     ConvSolution GetSolution(const ConvolutionContext& params) const;
 };
 
+struct AnySolver
+{
+    AnySolver() : ptr_value(nullptr){};
+    template <class U>
+    AnySolver(U src) : ptr_value(new AnySolver_tmpl<U>(std::forward<U>(src))){};
+    bool IsApplicable(const ConvolutionContext& ctx) const
+    {
+        assert(ptr_value != nullptr);
+        return ptr_value->IsApplicable(ctx);
+    };
+    const std::type_info& Type() const
+    {
+        assert(ptr_value != nullptr);
+        return ptr_value->Type();
+    };
+    bool IsEmpty() const { return ptr_value == nullptr; };
+    bool IsFast(const ConvolutionContext& ctx) const
+    {
+        assert(ptr_value != nullptr);
+        return ptr_value->IsFast(ctx);
+    };
+    ConvSolution FindSolution(const ConvolutionContext& ctx, MultiFileDb& db) const
+    {
+        assert(ptr_value != nullptr);
+        return ptr_value->FindSolution(ctx, db);
+    };
+
+    // virtual base class
+    struct AnySolver_base
+    {
+        using ptr = std::shared_ptr<const AnySolver_base>;
+
+        virtual ~AnySolver_base(){};
+        virtual bool IsApplicable(const ConvolutionContext& ctx) const = 0;
+        virtual bool IsFast(const ConvolutionContext& ctx) const       = 0;
+        virtual const std::type_info& Type() const                     = 0;
+        virtual ConvSolution FindSolution(const ConvolutionContext& ctx, MultiFileDb& db) const = 0;
+    };
+
+    // templated derived class
+    template <class T>
+    struct AnySolver_tmpl : AnySolver_base
+    {
+        AnySolver_tmpl(T obj) : value(std::move(obj)){};
+        bool IsApplicable(const ConvolutionContext& ctx) const override
+        {
+            return value.IsApplicable(ctx);
+        };
+        bool IsFast(const ConvolutionContext& ctx) const override { return value.IsFast(ctx); };
+        ConvSolution FindSolution(const ConvolutionContext& ctx, MultiFileDb& db) const override
+        {
+            return miopen::solver::FindSolution(value, ctx, db);
+        };
+        const std::type_info& Type() const override { return typeid(T); };
+
+        private:
+        T value;
+    };
+
+    AnySolver_base::ptr ptr_value;
+};
+
 } // namespace solver
 } // namespace miopen
+
+struct mlo_construct_direct2D_fusion : mlo_construct_direct2D
+{
+    mlo_construct_direct2D_fusion(int dir, bool do_bias = false)
+        : mlo_construct_direct2D(dir, do_bias)
+    {
+    }
+    mlo_construct_direct2D_fusion(const miopen::TensorDescriptor& in,
+                                  const miopen::TensorDescriptor& weights,
+                                  const miopen::TensorDescriptor& out,
+                                  const miopen::ConvolutionDescriptor& conv,
+                                  int dir,
+                                  bool do_bias = false)
+        : mlo_construct_direct2D(in, weights, out, conv, dir, do_bias)
+    {
+    }
+
+    inline void mloCopyTo(miopen::ConvolutionContext& params) const /// TODO: get rid of this
+    {
+        params = _search_params;
+    }
+    miopen::solver::ConvSolution FindSolution(std::vector<miopen::solver::AnySolver> solvers);
+};
 
 #endif // GUARD_MIOPEN_SOLVER_HPP_

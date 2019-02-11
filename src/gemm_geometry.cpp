@@ -25,8 +25,8 @@
  *******************************************************************************/
 #include <miopen/float_equal.hpp>
 #include <miopen/gemm_geometry.hpp>
-#include <regex>
 
+#if MIOPEN_USE_MIOPENGEMM
 namespace miopen {
 
 // so that MIOpen works whether or not recent MIOpenGEMM changes pulled:
@@ -34,34 +34,24 @@ namespace miopen {
 namespace tempfix {
 void set_offsets_to_uint(std::string& clstr)
 {
-    auto get_target = [](std::string inttype, char x) {
-        std::stringstream ss;
-        ss << "const " << inttype << ' ' << std::string(1, x) << "_offset";
-        return std::regex(ss.str());
-    };
 
     for(char x : {'a', 'b', 'c'})
     {
-        std::string replacement = "const unsigned " + std::string(1, x) + "_offset";
+        std::string replacement = "const unsigned " + std::string(1, x) + "_offset,";
         for(auto inttype : {"size_t", "ulong"})
         {
-            clstr = std::regex_replace(clstr, get_target(inttype, x), replacement);
+            std::string cmpstr =
+                "const " + std::string(inttype) + ' ' + std::string(1, x) + "_offset,";
+            auto pos = clstr.find(cmpstr);
+            if(pos != std::string::npos)
+            {
+                clstr.replace(pos, cmpstr.size(), replacement);
+                break;
+            }
         }
     }
 }
 } // namespace tempfix
-
-std::unordered_map<GemmKey, GemmGeometry, SimpleHash>& gemm_geo_map()
-{
-    static std::unordered_map<GemmKey, GemmGeometry, SimpleHash> data;
-    return data;
-}
-
-std::unique_lock<std::mutex> get_gemm_geo_map_lock()
-{
-    static std::mutex m{};
-    return std::unique_lock<std::mutex>{m};
-}
 
 void GemmGeometry::EnableBetaKernel(bool enable) { beta_kern_req = enable; }
 
@@ -110,7 +100,7 @@ void GemmGeometry::FindSolution(
     std::vector<size_t> vld{local_work_size, 1, 1};
     std::vector<size_t> vgd{global_work_size, 1, 1};
 
-    handle.GetKernel(algorithm_name, network_config, kernel_clstring, kernel_name, vld, vgd, "");
+    handle.AddKernel(algorithm_name, network_config, kernel_clstring, kernel_name, vld, vgd, "");
 
     if(soln.v_tgks.size() == 2)
     {
@@ -132,7 +122,7 @@ void GemmGeometry::FindSolution(
         vld[0] = local_work_size;
         vgd[0] = global_work_size;
 
-        handle.GetKernel(
+        handle.AddKernel(
             algorithm_name + "_beta",
             network_config, // jn : different network_configs require different beta kernels
             beta_program_name,
@@ -141,8 +131,8 @@ void GemmGeometry::FindSolution(
             vgd,
             "");
     }
-    auto guard = get_gemm_geo_map_lock();
-    gemm_geo_map()[std::make_pair(algorithm_name, network_config)] = *this;
+    handle.geo_map[std::make_pair(algorithm_name, network_config)] =
+        std::make_unique<GemmGeometry>(*this);
 }
 
 void GemmGeometry::RunGemm(Handle& handle,
@@ -181,3 +171,4 @@ void GemmGeometry::RunGemm(Handle& handle,
 }
 
 } // namespace miopen
+#endif // MIOPEN_USE_MIOPENGEMM

@@ -27,7 +27,7 @@
 #define MIOPEN
 
 #include <miopen/allocator.hpp>
-#include <miopen/db.hpp>
+#include <miopen/db_path.hpp>
 #include <miopen/handle.hpp>
 #include <miopen/legacy_exhaustive_search.hpp>
 #include <miopen/mlo_utils.hpp>
@@ -43,47 +43,8 @@
 namespace miopen {
 namespace solver {
 
-#if MIOPEN_PERFDB_CONV_LEGACY_SUPPORT
-static bool LegacyDeserializeField(const char separator, std::istream& from, int& to)
-{
-    std::string part;
-
-    if(!std::getline(from, part, separator))
-        return false;
-
-    const auto start = part.c_str();
-    char* end;
-    to = std::strtol(start, &end, 10);
-    return start != end;
-}
-
-bool LegacyPerformanceConfig::LegacyDeserialize(const std::string& from)
-{
-    std::istringstream ss(from);
-    LegacyPerformanceConfig temp;
-    const char sep = '.';
-
-    const auto succeded = // clang-format off
-        LegacyDeserializeField(sep, ss, temp.grp_tile1) &&
-        LegacyDeserializeField(sep, ss, temp.grp_tile0) &&
-        LegacyDeserializeField(sep, ss, temp.in_tile1) &&
-        LegacyDeserializeField(sep, ss, temp.in_tile0) &&
-        LegacyDeserializeField(sep, ss, temp.out_pix_tile1) &&
-        LegacyDeserializeField(sep, ss, temp.out_pix_tile0) &&
-        LegacyDeserializeField(sep, ss, temp.n_out_pix_tiles) &&
-        LegacyDeserializeField(sep, ss, temp.n_in_data_tiles) &&
-        LegacyDeserializeField(sep, ss, temp.n_stacks); // clang-format on
-
-    if(!succeded)
-        return false;
-
-    *this = temp;
-    return true;
-}
-#endif
-
 /*
-* select defult configuration if a known configuration has not been found.
+* select default configuration if a known configuration has not been found.
 */
 LegacyPerformanceConfig
 ConvOclDirectFwdLegacyExhaustiveSearch::GetPerformanceConfig(const ConvolutionContext& params) const
@@ -112,11 +73,12 @@ ConvOclDirectFwdLegacyExhaustiveSearch::GetPerformanceConfig(const ConvolutionCo
 
     result.n_stacks = 1; // # of diff stacks (part of batch).
 
-    if(params.kernel_size0 == 1 && params.kernel_size1 == 1)
+    if(params.kernel_size0 == 1 && params.kernel_size1 == 1 && params.group_counts < 2)
     {
 
         // version
-        if(params.direction.IsForward() && params.n_inputs % 16 == 0 && params.n_outputs % 16 == 0)
+        if(params.in_data_type == "FP32" && params.direction.IsForward() &&
+           params.n_inputs % 16 == 0 && params.n_outputs % 16 == 0)
         {
             result.n_in_data_tiles = 128;
 
@@ -131,18 +93,18 @@ ConvOclDirectFwdLegacyExhaustiveSearch::GetPerformanceConfig(const ConvolutionCo
         else
         {
             int i_sz             = params.out_height * params.out_width;
-            result.out_pix_tile0 = (i_sz & 1) ? 1 : 2;
+            result.out_pix_tile0 = (i_sz & 1) != 0 ? 1 : 2;
 
             if(params.pad0 > 0 || params.kernel_stride0 > 1)
             {
                 if(params.direction.IsForward())
                 {
-                    result.out_pix_tile0 = (params.out_width & 1) ? 1 : 2;
+                    result.out_pix_tile0 = (params.out_width & 1) != 0 ? 1 : 2;
                 }
                 else
                 {
                     result.out_pix_tile0 =
-                        ((params.out_width & 1) || (params.in_width & 1)) ? 1 : 2;
+                        (((params.out_width & 1) != 0) || ((params.in_width & 1) != 0)) ? 1 : 2;
                 }
             }
 
@@ -153,6 +115,8 @@ ConvOclDirectFwdLegacyExhaustiveSearch::GetPerformanceConfig(const ConvolutionCo
             result.out_pix_tile1 = 0;
         }
     }
+    if(!params.do_search) // Prevent spamming durign search.
+        MIOPEN_LOG_I2("Returns: " << result);
     return result;
 }
 
@@ -169,23 +133,29 @@ static int MeasureLoop(Handle* profile_h,
                        const ConvolutionContext& params,
                        const LegacyPerformanceConfig& result)
 {
-    int ret = 0;
     ConvSolution kernel_search_result{miopenStatusNotInitialized};
 
-    MIOPEN_STATIC_FOR_EACH(traits,
-                           Solvers{},
-                           {
-                               if(kernel_search_result.Succeeded() || traits.IsApplicable(params))
-                               {
-                                   kernel_search_result = traits.GetSolution(params, result);
-                               }
-                           });
+    miopen::each_args(
+        [&](auto s) {
+            if(!kernel_search_result.Succeeded()) // once
+            {
+                if(s.IsApplicable(params))
+                {
+                    if(s.IsValidPerformanceConfig(params, result))
+                    {
+                        kernel_search_result = s.GetSolution(params, result);
+                    }
+                }
+            }
+        },
+        Solvers{}...);
 
     if(!kernel_search_result.Succeeded())
     {
         return 1;
     }
 
+    MIOPEN_LOG_I2("Trying " << result);
     const auto kernel_params     = kernel_search_result.construction_params[0];
     std::string compiler_options = params.general_compile_options + kernel_params.comp_options;
 
@@ -199,7 +169,7 @@ static int MeasureLoop(Handle* profile_h,
         {
             processing_time = std::numeric_limits<float>::max();
 
-            auto k = profile_h->GetKernel("",
+            auto k = profile_h->AddKernel("",
                                           "",
                                           kernel_params.kernel_file,
                                           kernel_params.kernel_name,
@@ -220,9 +190,8 @@ static int MeasureLoop(Handle* profile_h,
         else
         {
             double s = 0, e = 0;
-            int iter = (params.n_timer_iter <= 0) ? 1 : params.n_timer_iter;
 
-            auto k = params.GetStream().GetKernel("",
+            auto k = params.GetStream().AddKernel("",
                                                   "",
                                                   kernel_params.kernel_file,
                                                   kernel_params.kernel_name,
@@ -243,22 +212,19 @@ static int MeasureLoop(Handle* profile_h,
 
             s = miopen_mach_absolute_time();
 
-            for(int i = 0; i < iter && ret == 0; i++)
+            if(params.bias)
             {
-                if(params.bias)
-                {
-                    k(bot_ocl_buf, wei_ocl_buf, bias_ocl_buf, top_ocl_buf, padding_value);
-                }
-                else
-                {
-                    k(bot_ocl_buf, wei_ocl_buf, top_ocl_buf, padding_value);
-                }
+                k(bot_ocl_buf, wei_ocl_buf, bias_ocl_buf, top_ocl_buf, padding_value);
+            }
+            else
+            {
+                k(bot_ocl_buf, wei_ocl_buf, top_ocl_buf, padding_value);
             }
 
             params.GetStream().Finish();
             e = miopen_mach_absolute_time();
 
-            processing_time = subtractTimes(e, s) / iter;
+            processing_time = subtractTimes(e, s);
         }
     }
     catch(miopen::Exception&)
@@ -266,7 +232,8 @@ static int MeasureLoop(Handle* profile_h,
         return -1;
     }
 
-    return (ret);
+    MIOPEN_LOG_I2("\t\t\t\t" << processing_time);
+    return 0;
 }
 
 LegacyPerformanceConfig
@@ -276,7 +243,7 @@ ConvOclDirectFwdLegacyExhaustiveSearch::Search(const ConvolutionContext& params)
     bool is_passed = false;
 
     miopen::Handle profile_h;
-    double processing_time;
+    double processing_time = std::numeric_limits<double>::max();
 
     int min_grp_tile0 = 16;
     int min_grp_tile1 = 16;
@@ -329,7 +296,7 @@ ConvOclDirectFwdLegacyExhaustiveSearch::Search(const ConvolutionContext& params)
     std::vector<float> bias_sys_buf;
     miopen::Allocator::ManageDataPtr bias_ocl_buf = nullptr;
 
-    if(params.bias)
+    if(params.bias != 0)
     {
         size_t bias_sz = params.bias_sz / sizeof(float);
         bias_sys_buf   = std::vector<float>(bias_sz);
@@ -351,7 +318,7 @@ ConvOclDirectFwdLegacyExhaustiveSearch::Search(const ConvolutionContext& params)
     int n_in_stacks_sz[2]  = {1, 2};
     int in_tiles[4]        = {64, 128, 256, 2048};
 
-    double min_proc_time = std::numeric_limits<float>::max();
+    double min_proc_time = std::numeric_limits<double>::max();
 
     size_t run_counter = 0;
 
@@ -382,7 +349,7 @@ ConvOclDirectFwdLegacyExhaustiveSearch::Search(const ConvolutionContext& params)
 
     long long runs_left = 0;
 
-    if(params.kernel_size0 == 1 && params.kernel_size1 == 1)
+    if(params.kernel_size0 == 1 && params.kernel_size1 == 1 && params.group_counts < 2)
     {
         int n_grp_tiles0 = 3;
         std::cout << "Searching the best solution in the 4 dim space. Please, be patient it may "
@@ -394,7 +361,8 @@ ConvOclDirectFwdLegacyExhaustiveSearch::Search(const ConvolutionContext& params)
         report_inteval   = 5;
 
         // Add 1x1_stride : no padding support yet
-        if(params.direction.IsForward() && params.n_inputs % 16 == 0 && params.n_outputs % 16 == 0)
+        if(params.in_data_type == "FP32" && params.direction.IsForward() &&
+           params.n_inputs % 16 == 0 && params.n_outputs % 16 == 0)
         {
 
             // uint N_LCL_IN_MAPS = result.n_in_data_tiles;
@@ -424,17 +392,18 @@ ConvOclDirectFwdLegacyExhaustiveSearch::Search(const ConvolutionContext& params)
             int i_sz = params.in_width * params.in_height;
             if(params.kernel_stride0 == 1)
             {
-                out_pix_tl_cnt = (i_sz & 1) ? 1 : (i_sz & 0x3) ? 2 : 3;
+                out_pix_tl_cnt = (i_sz & 1) != 0 ? 1 : (i_sz & 0x3) != 0 ? 2 : 3;
             }
             else
             {
                 if(params.direction.IsForward())
                 {
-                    out_pix_tl_cnt = (params.out_width & 1) ? 1 : 2;
+                    out_pix_tl_cnt = (params.out_width & 1) != 0 ? 1 : 2;
                 }
                 else
                 {
-                    out_pix_tl_cnt = ((params.out_width & 1) || (params.in_width & 1)) ? 1 : 2;
+                    out_pix_tl_cnt =
+                        (((params.out_width & 1) != 0) || ((params.in_width & 1) != 0)) ? 1 : 2;
                 }
             }
             out_pix_tile_sz[0] = 1;
@@ -543,6 +512,8 @@ ConvOclDirectFwdLegacyExhaustiveSearch::Search(const ConvolutionContext& params)
                             min_n_out_pix_tiles = result.n_out_pix_tiles;
                             min_n_in_data_tiles = result.n_in_data_tiles;
                             min_n_stacks        = result.n_stacks;
+                            MIOPEN_LOG_I2(
+                                "processing_time = " << processing_time << ", result = " << result);
                         }
 
                     } // for (int i_t = n_in_tiles_rg[0]; i_t <= n_in_tiles_rg[1]; ++i_t)
@@ -663,16 +634,14 @@ ConvOclDirectFwdLegacyExhaustiveSearch::Search(const ConvolutionContext& params)
                                     }
 
                                     const auto ret =
-                                        MeasureLoop<ConvOclDirectFwdC, ConvOclDirectFwd>(
-                                            &profile_h,
-                                            bot_ocl_buf.get(),
-                                            top_ocl_buf.get(),
-                                            wei_ocl_buf.get(),
-                                            bias_ocl_buf.get(),
-                                            processing_time,
-                                            params,
-                                            result);
-
+                                        MeasureLoop<ConvOclDirectFwd>(&profile_h,
+                                                                      bot_ocl_buf.get(),
+                                                                      top_ocl_buf.get(),
+                                                                      wei_ocl_buf.get(),
+                                                                      bias_ocl_buf.get(),
+                                                                      processing_time,
+                                                                      params,
+                                                                      result);
                                     runs_left--;
                                     runs_left = (runs_left < 0) ? 0 : runs_left;
 
@@ -714,6 +683,9 @@ ConvOclDirectFwdLegacyExhaustiveSearch::Search(const ConvolutionContext& params)
                                         min_n_out_pix_tiles = result.n_out_pix_tiles;
                                         min_n_in_data_tiles = result.n_in_data_tiles;
                                         min_n_stacks        = result.n_stacks;
+                                        MIOPEN_LOG_I2("processing_time = " << processing_time
+                                                                           << ", result = "
+                                                                           << result);
                                     }
 
                                 } // for (int s = 0; s < 3; ++s)

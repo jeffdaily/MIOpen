@@ -54,6 +54,24 @@ extern "C" miopenStatus_t miopenInitConvolutionDescriptor(miopenConvolutionDescr
     });
 }
 
+extern "C" miopenStatus_t miopenSetConvolutionGroupCount(miopenConvolutionDescriptor_t convDesc,
+                                                         int groupCount)
+{
+
+    MIOPEN_LOG_FUNCTION(convDesc, groupCount);
+    return miopen::try_([&] {
+        miopen::deref(convDesc).group_count = groupCount;
+        if(groupCount > 1 &&
+           !(miopen::deref(convDesc).mode == miopenTranspose ||
+             miopen::deref(convDesc).mode == miopenDepthwise))
+            miopen::deref(convDesc).mode = miopenGroupConv;
+        if(groupCount == 1 &&
+           !(miopen::deref(convDesc).mode == miopenTranspose ||
+             miopen::deref(convDesc).mode == miopenDepthwise))
+            miopen::deref(convDesc).mode = miopenConvolution;
+    });
+}
+
 extern "C" miopenStatus_t miopenGetConvolutionDescriptor(miopenConvolutionDescriptor_t convDesc,
                                                          miopenConvolutionMode_t* c_mode,
                                                          int* pad_h,
@@ -151,6 +169,10 @@ miopenFindConvolutionForwardAlgorithm(miopenHandle_t handle,
                         workSpaceSize,
                         exhaustiveSearch);
     return miopen::try_([&] {
+        if(miopen::deref(convDesc).mode == miopenDepthwise &&
+           (miopen::deref(convDesc).group_count != miopen::deref(xDesc).GetLengths()[1]))
+            miopenSetConvolutionGroupCount(convDesc, miopen::deref(xDesc).GetLengths()[1]);
+
         miopen::deref(convDesc).FindConvFwdAlgorithm(miopen::deref(handle),
                                                      miopen::deref(xDesc),
                                                      DataCast(x),
@@ -187,8 +209,16 @@ extern "C" miopenStatus_t miopenConvolutionForward(miopenHandle_t handle,
 
     if(miopen::IsLoggingCmd())
     {
-        std::cerr << MIOPEN_DRIVER_CMD("conv") << " -n " << miopen::deref(xDesc).GetLengths()[0]
-                  << " -c " << miopen::deref(xDesc).GetLengths()[1] << " -H "
+        if(miopen::deref(xDesc).GetType() == miopenHalf)
+        {
+            std::cerr << MIOPEN_DRIVER_CMD("convfp16");
+        }
+        else
+        {
+            std::cerr << MIOPEN_DRIVER_CMD("conv");
+        }
+        std::cerr << " -n " << miopen::deref(xDesc).GetLengths()[0] << " -c "
+                  << miopen::deref(xDesc).GetLengths()[1] << " -H "
                   << miopen::deref(xDesc).GetLengths()[2] << " -W "
                   << miopen::deref(xDesc).GetLengths()[3]
 
@@ -207,6 +237,10 @@ extern "C" miopenStatus_t miopenConvolutionForward(miopenHandle_t handle,
     }
 
     return miopen::try_([&] {
+        if(miopen::deref(convDesc).mode == miopenDepthwise &&
+           (miopen::deref(convDesc).group_count != miopen::deref(xDesc).GetLengths()[1]))
+            miopenSetConvolutionGroupCount(convDesc, miopen::deref(xDesc).GetLengths()[1]);
+
         miopen::deref(convDesc).ConvolutionForward(miopen::deref(handle),
                                                    alpha,
                                                    miopen::deref(xDesc),
@@ -279,6 +313,10 @@ miopenFindConvolutionBackwardDataAlgorithm(miopenHandle_t handle,
                         workSpaceSize,
                         exhaustiveSearch);
     return miopen::try_([&] {
+        if(miopen::deref(convDesc).mode == miopenDepthwise &&
+           (miopen::deref(convDesc).group_count != miopen::deref(dxDesc).GetLengths()[1]))
+            miopenSetConvolutionGroupCount(convDesc, miopen::deref(dxDesc).GetLengths()[1]);
+
         miopen::deref(convDesc).FindConvBwdDataAlgorithm(miopen::deref(handle),
                                                          miopen::deref(dyDesc),
                                                          DataCast(dy),
@@ -316,8 +354,16 @@ miopenConvolutionBackwardData(miopenHandle_t handle,
 
     if(miopen::IsLoggingCmd())
     {
-        std::cerr << MIOPEN_DRIVER_CMD("conv") << " -n " << miopen::deref(dxDesc).GetLengths()[0]
-                  << " -c " << miopen::deref(dxDesc).GetLengths()[1] << " -H "
+        if(miopen::deref(dyDesc).GetType() == miopenHalf)
+        {
+            std::cerr << MIOPEN_DRIVER_CMD("convfp16");
+        }
+        else
+        {
+            std::cerr << MIOPEN_DRIVER_CMD("conv");
+        }
+        std::cerr << " -n " << miopen::deref(dxDesc).GetLengths()[0] << " -c "
+                  << miopen::deref(dxDesc).GetLengths()[1] << " -H "
                   << miopen::deref(dxDesc).GetLengths()[2] << " -W "
                   << miopen::deref(dxDesc).GetLengths()[3]
 
@@ -336,6 +382,10 @@ miopenConvolutionBackwardData(miopenHandle_t handle,
     }
 
     return miopen::try_([&] {
+        if(miopen::deref(convDesc).mode == miopenDepthwise &&
+           (miopen::deref(convDesc).group_count != miopen::deref(dxDesc).GetLengths()[1]))
+            miopenSetConvolutionGroupCount(convDesc, miopen::deref(dxDesc).GetLengths()[1]);
+
         miopen::deref(convDesc).ConvolutionBackwardData(miopen::deref(handle),
                                                         alpha,
                                                         miopen::deref(dyDesc),
@@ -423,8 +473,16 @@ miopenFindConvolutionBackwardWeightsAlgorithm(miopenHandle_t handle,
 
     if(miopen::IsLoggingCmd())
     {
-        std::cerr << MIOPEN_DRIVER_CMD("conv") << " -n " << miopen::deref(xDesc).GetLengths()[0]
-                  << " -c " << miopen::deref(xDesc).GetLengths()[1] << " -H "
+        if(miopen::deref(xDesc).GetType() == miopenHalf)
+        {
+            std::cerr << MIOPEN_DRIVER_CMD("convfp16");
+        }
+        else
+        {
+            std::cerr << MIOPEN_DRIVER_CMD("conv");
+        }
+        std::cerr << " -n " << miopen::deref(xDesc).GetLengths()[0] << " -c "
+                  << miopen::deref(xDesc).GetLengths()[1] << " -H "
                   << miopen::deref(xDesc).GetLengths()[2] << " -W "
                   << miopen::deref(xDesc).GetLengths()[3]
 
@@ -443,6 +501,10 @@ miopenFindConvolutionBackwardWeightsAlgorithm(miopenHandle_t handle,
     }
 
     return miopen::try_([&] {
+        if(miopen::deref(convDesc).mode == miopenDepthwise &&
+           (miopen::deref(convDesc).group_count != miopen::deref(xDesc).GetLengths()[1]))
+            miopenSetConvolutionGroupCount(convDesc, miopen::deref(xDesc).GetLengths()[1]);
+
         miopen::deref(convDesc).FindConvBwdWeightsAlgorithm(miopen::deref(handle),
                                                             miopen::deref(dyDesc),
                                                             DataCast(dy),
@@ -478,6 +540,10 @@ miopenConvolutionBackwardWeights(miopenHandle_t handle,
     MIOPEN_LOG_FUNCTION(
         alpha, dyDesc, dy, xDesc, x, convDesc, algo, beta, dwDesc, dw, workSpace, workSpaceSize);
     return miopen::try_([&] {
+        if(miopen::deref(convDesc).mode == miopenDepthwise &&
+           (miopen::deref(convDesc).group_count != miopen::deref(xDesc).GetLengths()[1]))
+            miopenSetConvolutionGroupCount(convDesc, miopen::deref(xDesc).GetLengths()[1]);
+
         miopen::deref(convDesc).ConvolutionBackwardWeights(miopen::deref(handle),
                                                            alpha,
                                                            miopen::deref(dyDesc),

@@ -25,7 +25,7 @@
  *******************************************************************************/
 
 .hsa_code_object_version 2,1
-.hsa_code_object_isa 8, 0, 3, "AMD", "AMDGPU"
+.hsa_code_object_isa
 
 .text
 .globl gcnAsmConv3x3U
@@ -34,176 +34,9 @@
 .amdgpu_hsa_kernel gcnAsmConv3x3U
 
 
-.set __auto_gpr_count_guard, 1
-
-.macro .GPR_ALLOC_BEGIN
-    .set .AVAILABLE_VGPRS, 256
-    .set .AVAILABLE_SGPRS, 102
-	.set .SGPR_NEXT_FREE, 0
-	.set .VGPR_NEXT_FREE, 0
-	.set .AUTO_VGPR_COUNT, 0
-	.set .AUTO_SGPR_COUNT, 0
-	.set .AUTO_VGPR_GRANULATED_COUNT, 0
-	.set .AUTO_SGPR_GRANULATED_COUNT, 0
-    .set __sgpr_reserve_vcc, 0
-    .set __sgpr_reserve_xnack, 0
-    .set __sgpr_reserve_flatscr, 0
-	.set __auto_gpr_count_guard, 0
-	.set __max_waves_limit, 10
-	.set __min_waves_limit, 1
-.endm
-
-.macro .CHECK_SGPR_ALLOCATION gprs_to_allocate=0
-    .if .SGPR_NEXT_FREE >= .AVAILABLE_SGPRS
-	    .error "Error: out of free sgprs"
-	.endif
-.endm
-
-.macro .CHECK_VGPR_ALLOCATION gprs_to_allocate=0
-    .if (.VGPR_NEXT_FREE + \gprs_to_allocate) >= .AVAILABLE_VGPRS
-	    .error "Error: out of free vgprs"
-	.endif
-.endm
-
-.macro .GPRS_FOR_WAVE_LIMIT waves_per_simd, sgprs, vgprs
-    .if \waves_per_simd == 10
-	    \sgprs = 80
-		\vgprs = 24
-	.elseif \waves_per_simd == 9
-	    \sgprs = 96
-		\vgprs = 28
-	.elseif \waves_per_simd == 8
-	    \sgprs = 96
-		\vgprs = 32
-	.elseif \waves_per_simd == 7
-	    \sgprs = 102
-		\vgprs = 36
-	.elseif \waves_per_simd == 6
-	    \sgprs = 102
-		\vgprs = 40
-	.elseif \waves_per_simd == 5
-	    \sgprs = 102
-		\vgprs = 48
-	.elseif \waves_per_simd == 4
-	    \sgprs = 102
-		\vgprs = 64
-	.elseif \waves_per_simd == 3
-	    \sgprs = 102
-		\vgprs = 84
-	.elseif \waves_per_simd == 2
-	    \sgprs = 102
-		\vgprs = 128
-	.else
-	    \sgprs = 102
-		\vgprs = 256
-	.endif
-.endm
-
-.macro .SET_MIN_WAVES_LIMIT waves_per_simd
-    .if \waves_per_simd > 10
-		.error "Error: max 10 waves per simd is available"
-	.endif
-	.GPRS_FOR_WAVE_LIMIT \waves_per_simd, .AVAILABLE_SGPRS, .AVAILABLE_VGPRS
-	.CHECK_SGPR_ALLOCATION
-	.CHECK_VGPR_ALLOCATION
-	__min_waves_limit = \waves_per_simd
-	.if __min_waves_limit > __max_waves_limit
-	    .error "Error: __min_waves_limit > __max_waves_limit"
-	.endif
-.endm
-
-.macro .SET_MAX_WAVES_LIMIT waves_per_simd
-    .if \waves_per_simd < 1
-		.error "Error: waves per simd should be > 0"
-	.endif
-	__max_waves_limit = \waves_per_simd
-	.if __min_waves_limit > __max_waves_limit
-	    .error "Error: __min_waves_limit > __max_waves_limit"
-	.endif
-.endm
-
-
-.macro .GPR_ALLOC_END
-    .if __auto_gpr_count_guard == 1
-	    .error "Error: unpaired .GPR_ALLOC_END. Please invoke .GPR_ALLOC_BEGIN before each kernel."
-	.endif
-	.CHECK_SGPR_ALLOCATION
-	.CHECK_VGPR_ALLOCATION
-	__sgpr_additional_count = 2 * (__sgpr_reserve_flatscr + __sgpr_reserve_xnack + __sgpr_reserve_vcc)
-	.GPRS_FOR_WAVE_LIMIT __max_waves_limit, .AUTO_SGPR_COUNT, .AUTO_VGPR_COUNT
-	.if .AUTO_VGPR_COUNT < .VGPR_NEXT_FREE
-	    .AUTO_VGPR_COUNT = .VGPR_NEXT_FREE
-	.endif
-	.if .AUTO_SGPR_COUNT < (.SGPR_NEXT_FREE + __sgpr_additional_count)
-	    .AUTO_SGPR_COUNT = (.SGPR_NEXT_FREE + __sgpr_additional_count)
-	.endif
-	.AUTO_VGPR_GRANULATED_COUNT = (.AUTO_VGPR_COUNT - 1)/4
-	.AUTO_SGPR_GRANULATED_COUNT = (.AUTO_SGPR_COUNT - 1)/8
-    __auto_gpr_count_guard = 1
-.endm
-
-.macro .VGPR_ALLOC_FROM __vgpr_alloc_from
-    .set .VGPR_NEXT_FREE, \__vgpr_alloc_from
-.endm
-
-.macro .SGPR_ALLOC_FROM __sgpr_alloc_from
-    .set .SGPR_NEXT_FREE, \__sgpr_alloc_from
-.endm
-
-.macro .SGPR_RESERVE_FLATSCR
-    .set __sgpr_reserve_flatscr, 1
-.endm
-
-.macro .SGPR_RESERVE_XNACK
-    .set __sgpr_reserve_xnack, 1
-.endm
-
-.macro .SGPR_RESERVE_VCC
-    .set __sgpr_reserve_vcc, 1
-.endm
-
-.macro .VGPR_ALLOC __vgpr_number_symbolic, __vgpr_numregs=1
-    .CHECK_VGPR_ALLOCATION \__vgpr_numregs
-    .set \__vgpr_number_symbolic, .VGPR_NEXT_FREE
-    .set .VGPR_NEXT_FREE, .VGPR_NEXT_FREE + \__vgpr_numregs
-.endm
-
-.macro .SGPR_ALLOC __sgpr_number_symbolic, __sgpr_numregs=1, __sgpr_alligment=0
-    .CHECK_SGPR_ALLOCATION \__sgpr_numregs
-	.if \__sgpr_alligment > 0
-		.set __sgpr_effective_alligment, \__sgpr_alligment
-	.elseif \__sgpr_numregs > 4
-		.set __sgpr_effective_alligment, 4
-	.else
-		.set __sgpr_effective_alligment, \__sgpr_numregs
-	.endif
-    .if .SGPR_NEXT_FREE % __sgpr_effective_alligment != 0
-		.error "Error: unaligned register"
-    .endif
-    .set \__sgpr_number_symbolic, .SGPR_NEXT_FREE
-    .set .SGPR_NEXT_FREE, .SGPR_NEXT_FREE + \__sgpr_numregs
-.endm
-
-.macro .SGPR_ALLOC_ONCE __sgpr_symbolic, __sgpr_numregs=1, __sgpr_alligment=0
-	.ifndef __guard_sgpr_\__sgpr_symbolic
-		__guard_sgpr_\__sgpr_symbolic = 0
-	.endif
-	.if __guard_sgpr_\__sgpr_symbolic == 0
-		__guard_sgpr_\__sgpr_symbolic = 1
-		.SGPR_ALLOC \__sgpr_symbolic, \__sgpr_numregs, \__sgpr_alligment
-	.endif
-.endm
-
-.macro .GPR_INVALIDATE __gpr_symbolic
-	.set \__gpr_symbolic, 0x7fffffff /* invalidate (intentionally to the middle of the int range) */
-.endm
-
-.macro .GPR_REUSE __gpr_number_symbolic_old, __gpr_number_symbolic_new
-    .set \__gpr_number_symbolic_new, \__gpr_number_symbolic_old
-    .GPR_INVALIDATE \__gpr_number_symbolic_old
-.endm
-
-
+.include "gpr_alloc.inc"
+.include "common.inc"
+.include "inst_wrappers.inc"
 
 // initial state (s[0:4] are overlapped with filtersA):
 // s[0:1] - kernarg address
@@ -270,9 +103,11 @@ acc_x_blocks = gprs_per_input_line / block_size_x
 acc_y_blocks = output_lines_per_wave
 .if gprs_per_input_line % block_size_x
     .error "Fazoht!"
+    .end
 .endif
 .if (w64_chunks * active_lanes) < img_x_blocks
     .error "Check w size"
+    .end
 .endif
 .if img_x_blocks % active_lanes
     uneven_line_read_mode = 1
@@ -311,7 +146,7 @@ acc_y_blocks = output_lines_per_wave
 
 // compute how many lines can we load or store using immediate 12-bit instruction offset
 // for all other lines we need additional sgpr to hold offset
-input_lines_per_sgpr = 1 + (0x1000-1) / input_line_stride
+input_lines_per_sgpr = 1 + (0x1000-1-4*mbufs_per_line) / input_line_stride
 .if input_lines_per_sgpr == 1
     additional_input_sgprs = input_lines_per_wave - 1
 .else
@@ -328,7 +163,7 @@ input_lines_per_sgpr = 1 + (0x1000-1) / input_line_stride
     .endif
 .endif
 
-output_lines_per_sgpr = 1 + (0x1000-1) / output_line_stride
+output_lines_per_sgpr = 1 + (0x1000-1-4*mbufs_per_line) / output_line_stride
 .if output_lines_per_sgpr == 1
     additional_output_sgprs = output_lines_per_wave
 .else
@@ -384,6 +219,7 @@ filter_part_size = weights_per_filter & 0x3
 filter_base_size = weights_per_filter - filter_part_size
 .if filter_part_size == 3
     .error "Unsupported filter size"
+    .end
 .endif
 sgprs_to_allocate_after_filters = 4 + 2 + 2*load_weights_using_buffer + 2 + 3 + additional_input_sgprs
 .if weights_layout == 0  // KCHW
@@ -453,6 +289,7 @@ __sgprs_ptr = .SGPR_NEXT_FREE
 __sgprs_allocated_after_filters = .SGPR_NEXT_FREE - __sgprs_ptr
 .if sgprs_to_allocate_after_filters != __sgprs_allocated_after_filters
     .error "Error: check sgpr allocation"
+    .end
 .endif
 
 .macro .get_wei w, base, part, k, x, y
@@ -476,6 +313,7 @@ __sgprs_allocated_after_filters = .SGPR_NEXT_FREE - __sgprs_ptr
 
 
 .VGPR_ALLOC_FROM 0
+    .VGPR_ALLOC tid
 .if enable_zero_line_padding_on_read
     .VGPR_ALLOC in_off // input start line offset (for zero padding)
 .endif
@@ -511,6 +349,7 @@ __sgprs_allocated_after_filters = .SGPR_NEXT_FREE - __sgprs_ptr
     .if ((vals_to_load - \count) >= 0) && vals_to_load > 0
         .if woff >= (1 << 20)
             .error "Error: Immediate offset is too large for s_load instruction"
+            .end
         .endif
         .if load_weights_using_buffer
             .if \count == 1
@@ -620,6 +459,7 @@ __sgprs_allocated_after_filters = .SGPR_NEXT_FREE - __sgprs_ptr
     .if ((vals_to_load - \count) >= 0) && vals_to_load > 0
         .if imm_off >= (1 << 12)
             .error "Error: Immediate offset is too large for buffer_load instruction"
+            .end
         .endif
 
         .if \count == 1
@@ -628,7 +468,7 @@ __sgprs_allocated_after_filters = .SGPR_NEXT_FREE - __sgprs_ptr
             .elseif enable_zero_line_padding_on_read
                 buffer_load_dword v[\base+vals_loaded], v[in_off], s[in_desc:in_desc+3], s[\s_offset] offen offset:0+imm_off
             .else
-                buffer_load_dword v[\base+vals_loaded], off, s[in_desc:in_desc+3], s[\s_offset] offset:0+imm_off
+                buffer_load_dword v[\base+vals_loaded], v[voffset], s[in_desc:in_desc+3], s[\s_offset] offen offset:0+imm_off
             .endif
         .else
             .if \partial
@@ -636,7 +476,7 @@ __sgprs_allocated_after_filters = .SGPR_NEXT_FREE - __sgprs_ptr
             .elseif enable_zero_line_padding_on_read
                 buffer_load_dwordx\count v[\base+vals_loaded:\base+vals_loaded+\count-1], v[in_off], s[in_desc:in_desc+3], s[\s_offset] offen offset:0+imm_off
             .else
-                buffer_load_dwordx\count v[\base+vals_loaded:\base+vals_loaded+\count-1], off, s[in_desc:in_desc+3], s[\s_offset] offset:0+imm_off
+                buffer_load_dwordx\count v[\base+vals_loaded:\base+vals_loaded+\count-1], v[voffset], s[in_desc:in_desc+3], s[\s_offset] offen offset:0+imm_off
             .endif
         .endif
 
@@ -743,6 +583,7 @@ gcnAsmConv3x3U:
     .error "Error: check vgpr allocation"
     // in case of back transformation data will be moved to
     // lower registers, so accums should be allocated after linesA and linesB
+    .end
 .endif
 
 //.text 1
@@ -760,7 +601,7 @@ gcnAsmConv3x3U:
     v_mbcnt_hi_u32_b32 v[dbg_ptr], -1, v[dbg_ptr]
     v_mul_u32_u24 v[dbg_ptr], v[dbg_ptr], 4
     v_mov_b32 v[dbg_ptr+1], s[7]
-    v_add_u32 v[dbg_ptr], vcc, v[dbg_ptr], s[6]
+   _v_add_co_u32 v[dbg_ptr], vcc, v[dbg_ptr], s[6]
     v_addc_u32 v[dbg_ptr+1], vcc, v[dbg_ptr+1], 0, vcc
     s_mov_b32 exec_lo, s[dbg_exec_lo]
     s_mov_b32 exec_hi, s[dbg_exec_hi]
@@ -773,12 +614,16 @@ gcnAsmConv3x3U:
   s_load_dwordx2 s[weights_ptr:weights_ptr+1], s[kernarg:kernarg+1], 0x0 + wei_ptr_off
   s_load_dwordx2 s[out_ptr:out_ptr+1], s[kernarg:kernarg+1], 0x0 + out_ptr_off
 
+  v_and_b32 v[tid], 0x3f, v[tid]
+  v_mul_u32_u24 v[tid], v[tid], 4 * gprs_per_output_line
+  .GPR_REUSE tid, voffset
   // compute offsets for input
   .if enable_zero_line_padding_on_read
     s_cmpk_eq_u32 s[gid_y], 0
     s_cselect_b32 s[img_offset], 0, -1 * input_line_stride
     s_cselect_b32 s[tmp], -1 * input_line_stride, 0
     v_mov_b32 v[in_off], s[tmp]
+   _v_add_nc_u32 v[in_off], v[in_off], v[voffset]
     s_mul_i32 s[tmp], s[gid_y], 0 + input_line_stride * acc_lines_per_wave
     s_add_u32 s[img_offset], s[img_offset], s[tmp]
   .else
@@ -796,6 +641,7 @@ gcnAsmConv3x3U:
     v_mov_b32 v[in_off_p], 0x7fffFFFF
     .if ((0x7fffFFFF - input_line_stride)/2) < input_feature_map_stride
         .error "Error: feature map is too big"
+        .end
     .endif
     .if active_lanes > 32
         last_active_lane_mask = 1 << (active_lanes - 1 - 32)
@@ -809,7 +655,9 @@ gcnAsmConv3x3U:
         s_xor_b32 exec_lo, exec_lo, last_active_lane_mask
     .endif
     .if enable_zero_line_padding_on_read
-        v_add_u32 v[in_off_p], vcc, v[in_off_p], v[in_off]
+       _v_add_nc_u32 v[in_off_p], v[in_off_p], v[in_off] 
+    .else
+       _v_add_nc_u32 v[in_off_p], v[in_off_p], v[voffset]
     .endif
   .endif
 
@@ -828,15 +676,12 @@ gcnAsmConv3x3U:
   .if batch_size > 1
     s_mul_i32 s[tmp], s[gid_z], input_feature_map_stride * input_channels
     s_add_u32 s[in_desc], s[in_desc], s[tmp] // add input image batch offset
-    s_addc_u32 s[in_desc+1], s[in_desc+1], 0x0 + gprs_per_input_line << 18 // add stride
-  .else
-    s_add_u32 s[in_desc+1], s[in_desc+1], 0x0 + gprs_per_input_line << 18 // add stride
   .endif
   s_mov_b32 s[in_desc+2], input_buffer_window // size
-  s_mov_b32 s[in_desc+3], 0x00804fac // format
+  s_mov_b32 s[in_desc+3], 0x00027000
 
   .if uneven_outputs
-	s_mul_i32 s[out_k], s[gid_x], filters_per_wave
+    s_mul_i32 s[out_k], s[gid_x], filters_per_wave
   .endif
   s_mul_i32 s[tmp], s[gid_x], output_feature_map_stride * filters_per_wave // output image filter offset
   .if batch_size > 1 // add output image batch offset
@@ -844,7 +689,6 @@ gcnAsmConv3x3U:
     s_add_u32 s[tmp], s[tmp], s[gid_z]
   .endif
   s_add_u32 s[out_ptr], s[out_ptr], s[tmp]
-  s_addc_u32 s[out_ptr+1], s[out_ptr+1], 0x0 + gprs_per_output_line << 18 // output stride
   s_mul_i32 s[tmp], s[gid_y], output_line_stride * output_lines_per_wave // output line offset
   .GPR_REUSE tmp, out_img_off
   .GPR_INVALIDATE gid_x
@@ -962,18 +806,19 @@ loop_end:
     .if ((vals_to_store - \count) >= 0) && vals_to_store > 0
         .if imm_off >= (1 << 12)
             .error "Error: Immediate offset is too large for buffer_store instruction"
+            .end
         .endif
         .if \count == 1
             .if \partial
                 buffer_store_dword v[\base+vals_stored], v[in_off_p], s[out_desc:out_desc+3], s[\s_offset] offen offset:0+imm_off
             .else
-                buffer_store_dword v[\base+vals_stored], off, s[out_desc:out_desc+3], s[\s_offset] offset:0+imm_off
+                buffer_store_dword v[\base+vals_stored], v[voffset], s[out_desc:out_desc+3], s[\s_offset] offen offset:0+imm_off
             .endif
         .else
             .if \partial
                 buffer_store_dwordx\count v[\base+vals_stored:\base+vals_stored+\count-1], v[in_off_p], s[out_desc:out_desc+3], s[\s_offset] offen offset:0+imm_off
             .else
-                buffer_store_dwordx\count v[\base+vals_stored:\base+vals_stored+\count-1], off, s[out_desc:out_desc+3], s[\s_offset] offset:0+imm_off
+                buffer_store_dwordx\count v[\base+vals_stored:\base+vals_stored+\count-1], v[voffset], s[out_desc:out_desc+3], s[\s_offset] offen offset:0+imm_off
             .endif
         .endif
         vals_to_store = vals_to_store - \count
@@ -1034,7 +879,8 @@ loop_end:
 .endm
 
   .if uneven_line_write_mode && enable_zero_line_padding_on_read
-    v_sub_u32 v[in_off_p], vcc, v[in_off_p], v[in_off]
+   _v_sub_nc_u32 v[in_off_p], v[in_off_p], v[in_off]
+   _v_add_nc_u32 v[in_off_p], v[in_off_p], v[voffset]
   .endif
 
 
@@ -1054,15 +900,15 @@ loop_end:
     .endr
     out0 = out0 + output_lines_per_wave * gprs_per_output_line
 
-	.if uneven_outputs
-		s_addk_i32 s[out_k], 1
-		s_cmpk_lt_u32 s[out_k], 0 + output_channels
-		tmp = wei_desc_hi
-		s_cselect_b32 s[tmp], 0 + output_feature_map_stride, 0
-		s_add_u32 s[out_desc+2], s[out_desc+2], s[tmp]
-	.else
-		s_add_u32 s[out_desc+2], s[out_desc+2], 0 + output_feature_map_stride
-	.endif
+    .if uneven_outputs
+        s_addk_i32 s[out_k], 1
+        s_cmpk_lt_u32 s[out_k], 0 + output_channels
+        tmp = wei_desc_hi
+        s_cselect_b32 s[tmp], 0 + output_feature_map_stride, 0
+        s_add_u32 s[out_desc+2], s[out_desc+2], s[tmp]
+    .else
+        s_add_u32 s[out_desc+2], s[out_desc+2], 0 + output_feature_map_stride
+    .endif
   .endr
   .store_output out0
 
@@ -1073,6 +919,7 @@ loop_end:
 
 .ifndef ROCM_METADATA_VERSION
 .error "ROCM_METADATA_VERSION must be defined"
+.end
 .endif
 .if ROCM_METADATA_VERSION == 4
 .amd_amdgpu_hsa_metadata

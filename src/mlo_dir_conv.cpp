@@ -27,6 +27,7 @@
 #define MIOPEN
 
 #include <miopen/config.h>
+#include <miopen/convolution.hpp>
 
 #include <cmath>
 #include <cstring>
@@ -36,20 +37,13 @@
 #include <unordered_map>
 
 #include <miopen/solver.hpp>
-#include <miopen/db_record.hpp>
+#include <miopen/db.hpp>
 #include <miopen/env.hpp>
 #include <miopen/gcn_asm_utils.hpp>
 #include <miopen/mlo_internal.hpp>
 #include <miopen/mlo_utils.hpp>
 
-MIOPEN_DECLARE_ENV_VAR(MIOPEN_DEBUG_AMD_ROCM_PRECOMPILED_BINARIES)
 MIOPEN_DECLARE_ENV_VAR(MIOPEN_DEBUG_GCN_ASM_KERNELS)
-
-bool mlo_construct_direct2D::mloIsCompilerWorkarounds() const
-{
-    bool ret = false;
-    return ret;
-}
 
 /************************************************************************************************************************
  **
@@ -57,42 +51,44 @@ bool mlo_construct_direct2D::mloIsCompilerWorkarounds() const
  **
  ************************************************************************************************************************/
 
-void mlo_construct_direct2D::setupRocm()
+miopen::MultiFileDb mlo_construct_direct2D::GetDb() const
 {
-    // Detect assembly kernels
-    _search_params.use_binaries        = false;
-    _search_params.assembler_available = false;
-    _search_params.rmv                 = rocm_meta_version::Default;
-    if(mloIsAmdRocm(_search_params.rmv))
+    return {db_path(), _search_params.GetUserPerfDbPath()};
+}
+
+miopen::solver::ConvSolution
+mlo_construct_direct2D_fusion::FindSolution(std::vector<miopen::solver::AnySolver> solvers)
+{
+    miopen::solver::ConvSolution solution{miopenStatusUnknownError};
+    std::string solver_id;
+    auto db = this->GetDb();
+    for(auto& solver : solvers)
     {
-        _search_params.assembler_available =
-            !miopen::IsDisabled(MIOPEN_DEBUG_GCN_ASM_KERNELS{}) && ValidateGcnAssembler();
-#ifndef HIP_OC_FINALIZER
-        _search_params.use_binaries =
-            !miopen::IsDisabled(MIOPEN_DEBUG_AMD_ROCM_PRECOMPILED_BINARIES{});
-#endif
+        solution = solver.FindSolution(_search_params, db);
+        if(solution.Succeeded() && solver.IsApplicable(_search_params) &&
+           solver.IsFast(_search_params))
+        {
+            solver_id = miopen::solver::SolverDbId(solver);
+            break;
+        }
     }
+    if(solution.Succeeded() && solution.construction_params.empty())
+    {
+        MIOPEN_THROW(std::string("Internal error in solver: ") + solver_id);
+    }
+    return solution;
 }
 
-miopen::DbRecord mlo_construct_direct2D::GetDbRecord() const
+std::vector<miopen::solver::ConvSolution> mlo_construct_direct2D::FindAllSolutions()
 {
-#if MIOPEN_PERFDB_CONV_LEGACY_SUPPORT
-    return {db_path(), _search_params, true};
-#else
-    return {db_path(), _search_params};
-#endif
-}
+    if(_search_params.group_counts > 1)
+        return miopen::solver::SearchForAllSolutions<miopen::solver::ConvOclDirectFwd>(
+            _search_params, this->GetDb());
 
-/*
-   construction has been split into 2
-   generic convlution forward
-   non-generic stride = 1, forward and backward
-   */
-miopen::solver::ConvSolution mlo_construct_direct2D::FindSolution()
-{
     // clang-format off
-    return miopen::solver::SearchForSolution<
+    return miopen::solver::SearchForAllSolutions<
         miopen::solver::ConvAsm3x3U,
+        miopen::solver::ConvAsm1x1U,
         miopen::solver::ConvAsm5x10u2v2f1,
         miopen::solver::ConvAsm7x7c3h224w224k64u2v2p3q3f1,
         miopen::solver::ConvAsm5x10u2v2b1,
@@ -100,9 +96,8 @@ miopen::solver::ConvSolution mlo_construct_direct2D::FindSolution()
         miopen::solver::ConvOclDirectFwdGen,
         miopen::solver::ConvOclDirectFwd3x3,
         miopen::solver::ConvOclDirectFwd1x1,
-        miopen::solver::ConvOclDirectFwdC,
         miopen::solver::ConvOclDirectFwd
-    >(_search_params, this->GetDbRecord());
+    >(_search_params, this->GetDb());
     // clang-format on
 }
 
@@ -112,52 +107,21 @@ miopen::solver::ConvSolution mlo_construct_winograd::FindSolution()
     return miopen::solver::SearchForSolution<
         miopen::solver::ConvBinWinograd3x3U,
         miopen::solver::ConvBinWinogradRxS
-    >(_search_params, this->GetDbRecord());
+    >(_search_params, this->GetDb());
     // clang-format on
 }
 
-miopen::solver::ConvSolution mlo_construct_BwdWrW2D::FindSolution()
+std::vector<miopen::solver::ConvSolution> mlo_construct_BwdWrW2D::FindAllSolutions()
 {
     // clang-format off
-    return miopen::solver::SearchForSolution<
+    return miopen::solver::SearchForAllSolutions<
         miopen::solver::ConvAsmBwdWrW1x1,
         miopen::solver::ConvAsmBwdWrW3x3,
         miopen::solver::ConvOclBwdWrW2,
         miopen::solver::ConvOclBwdWrW53,
         miopen::solver::ConvOclBwdWrW1x1
-    >(_search_params, this->GetDbRecord());
+    >(_search_params, this->GetDb());
     // clang-format on
-}
-
-void mlo_construct_direct2D::mloUseSolution(const miopen::solver::ConvSolution& s)
-{
-    if(!s.Succeeded())
-    {
-        MIOPEN_THROW("No solution found");
-    }
-    assert(!s.construction_params.empty());
-    _comp_options = s.construction_params[0].comp_options;
-    _kernel_file  = s.construction_params[0].kernel_file;
-    _kernel_name  = s.construction_params[0].kernel_name;
-    _g_wk         = s.construction_params[0].g_wk;
-    _l_wk         = s.construction_params[0].l_wk;
-
-    _workspce_sz     = s.workspce_sz;
-    _grp_tile0       = s.grp_tile0;
-    _grp_tile1       = s.grp_tile1;
-    _in_tile0        = s.in_tile0;
-    _in_tile1        = s.in_tile1;
-    _out_pix_tile0   = s.out_pix_tile0;
-    _out_pix_tile1   = s.out_pix_tile1;
-    _n_out_pix_tiles = s.n_out_pix_tiles;
-    _n_in_data_tiles = s.n_in_data_tiles;
-    _n_stacks        = s.n_stacks;
-
-    for(const auto& params : s.construction_params)
-    {
-        _mlo_kernels_info.emplace_back(std::make_tuple(
-            params.kernel_name, params.kernel_file, params.comp_options, params.g_wk, params.l_wk));
-    }
 }
 
 #if MIOPEN_BACKEND_OPENCL
@@ -232,7 +196,7 @@ static rocm_meta_version DetectAmdRocmMetadataVersion(const miopen::ConvolutionC
             rmv = rocm_meta_version::V1;
         else if(num < 2389) // Switched to V3 somewhere within [2388,2389]
             rmv = rocm_meta_version::V2;
-        else if(num < 2536) // Switched to newer version at 2536 for sure.
+        else if(num < 2535) // Switched to newer version at 2535 for sure.
             rmv = rocm_meta_version::V3;
         else
             rmv = rocm_meta_version::AMDHSA_1_0;
@@ -253,180 +217,52 @@ static rocm_meta_version DetectAmdRocmMetadataVersion(const miopen::ConvolutionC
     return rmv;
 }
 
-bool mlo_construct_direct2D::mloIsAmdRocm(rocm_meta_version& rmv) const
+static bool mloIsAmdRocmOpencl(miopen::ConvolutionContext& context)
 {
-    static const bool ret_bool
+    static const bool ret_bool =
 #if MIOPEN_BACKEND_OPENCL
-        = IsAmdRocmOpencl(_search_params);
+        IsAmdRocmOpencl(context);
 #else
-        = true;
+        true;
 #endif // MIOPEN_BACKEND_OPENCL
     if(ret_bool)
     {
-        static const rocm_meta_version ret_rmv = DetectAmdRocmMetadataVersion(_search_params);
-        rmv                                    = ret_rmv;
+        static const rocm_meta_version ret_rmv = DetectAmdRocmMetadataVersion(context);
+        context.rmv                            = ret_rmv;
     }
     return ret_bool;
 }
 
-bool mlo_construct_BwdWrW2D::mloIsCompilerWorkarounds() const
+void mlo_construct_direct2D::setupFloats()
 {
-    bool ret =
-        (_search_params.in_height == 227 && _search_params.in_width == 227 &&
-         (_search_params.n_inputs & 0x3) > 0 && _search_params.kernel_size0 == 3 &&
-         _search_params.kernel_size1 == 3 && _search_params.pad0 == 1 && _search_params.pad1 == 1 &&
-         _search_params.kernel_stride0 == 1 && _search_params.kernel_stride1 == 1) ||
-        (_search_params.in_height == 231 && _search_params.in_width == 231 &&
-         _search_params.n_inputs == 1 && _search_params.kernel_size0 == 3 &&
-         _search_params.kernel_size1 == 3 && _search_params.pad0 == 1 && _search_params.pad1 == 1 &&
-         _search_params.kernel_stride0 == 1 && _search_params.kernel_stride1 == 1);
-    return ret;
+    if(_search_params.float_size == 32)
+    {
+        _search_params.general_compile_options += " -DMIOPEN_USE_FP32=1 -DMIOPEN_USE_FP16=0";
+    }
+    else if(_search_params.float_size == 16)
+    {
+        _search_params.general_compile_options += " -DMIOPEN_USE_FP32=0 -DMIOPEN_USE_FP16=1";
+    }
+}
+
+void mlo_construct_direct2D::setupRocm()
+{
+    // Detect assembly kernels
+    _search_params.use_binaries    = false;
+    _search_params.use_asm_kernels = false;
+    _search_params.rmv             = rocm_meta_version::Default;
+    if(mloIsAmdRocmOpencl(_search_params))
+    {
+        _search_params.use_asm_kernels =
+            !miopen::IsDisabled(MIOPEN_DEBUG_GCN_ASM_KERNELS{}) && ValidateGcnAssembler();
+#ifndef HIP_OC_FINALIZER
+        _search_params.use_binaries =
+            !miopen::IsDisabled(MIOPEN_DEBUG_AMD_ROCM_PRECOMPILED_BINARIES{});
+#endif
+    }
 }
 
 bool mlo_construct_direct2D::mloIsFastBinaryWinograd3x3U() const
 {
     return (_search_params.n_outputs >= 16 && _search_params.n_outputs % 2 == 0);
-}
-
-int mlo_construct_BwdWrW2D::mloMultiStep()
-{
-    _search_params.n_passes = true;
-    auto s                  = this->FindSolution();
-    _search_params.n_passes = false;
-    return s.passes;
-}
-
-/***********************************************************************************************************
-
- * Internal implementation of the direct conv configuration search
-
- ************************************************************************************************************/
-
-/*
-   the search db is a text file with the name defined by the device characteristics.
-   each line is a key/value pair, separated by a space:
-   32x16x16x3x3x64x16x16x100xNCHWxFP32x1 16.16.16.16.1.4.8.4.1
-   or
-   64x8x8x5x5x32x8x8x100xNCHWxFP32x0 16.16.8.8.2.4.1.1.4
-
-   key format (all values are separted by x):
-   n input maps
-   input height
-   input width
-   filter height
-   filter width
-   n output maps
-   output height
-   output width
-   batch size
-   tensors' layout
-   tensprs' data type
-   direction (1 - forward, 0 - backward)
-
-Note:
-for backward direction - input and output are reversed.
-
-value format (all values are separated by .):
-vertical group size
-horizontal group size
-input block vertical size
-input block horizontal size
-output tile vertical size
-output tile horizaontal size
-n of output tiles
-n of input blocks
-n batchs (stacks) processed by the group
-*/
-
-int mlo_construct_direct2D::mloBuildConf_Key(std::string& conf_key) const
-{
-
-    conf_key =
-        std::to_string(static_cast<long long>(_search_params.n_inputs)) + std::string("x") +
-        std::to_string(static_cast<long long>(_search_params.in_height)) + std::string("x") +
-        std::to_string(static_cast<long long>(_search_params.in_width)) + std::string("x") +
-        std::to_string(static_cast<long long>(_search_params.kernel_size1)) + std::string("x") +
-        std::to_string(static_cast<long long>(_search_params.kernel_size0)) + std::string("x") +
-        std::to_string(static_cast<long long>(_search_params.n_outputs)) + std::string("x") +
-        std::to_string(static_cast<long long>(_search_params.out_height)) + std::string("x") +
-        std::to_string(static_cast<long long>(_search_params.out_width)) + std::string("x") +
-        std::to_string(static_cast<long long>(_search_params.batch_sz)) + std::string("x") +
-        _search_params.in_layout + std::string("x") + _search_params.in_data_type +
-        std::string("x") + (_search_params.direction.IsForward()
-                                ? "1"
-                                : "0"); /// \todo Shall we separate keys for WrW convolutions?
-    return (0);
-}
-
-// Tensor Helper APIs
-
-size_t
-mlo_construct_direct2D::setWeightDescFromMLDesc(const miopen::TensorDescriptor& weight_tensor)
-{
-
-    int nWei;
-    int cWei;
-    int hWei;
-    int wWei;
-    int nWeiStride;
-    int cWeiStride;
-    int hWeiStride;
-    int wWeiStride;
-
-    std::tie(nWei, cWei, hWei, wWei) = miopen::tien<4>(weight_tensor.GetLengths());
-    std::tie(nWeiStride, cWeiStride, hWeiStride, wWeiStride) =
-        miopen::tien<4>(weight_tensor.GetStrides());
-
-    setWeightsDescr(
-        "NCHW", "FP32", nWei, cWei, hWei, wWei, nWeiStride, cWeiStride, hWeiStride, wWeiStride);
-
-    size_t weights_sz = nWei * cWei * hWei * wWei * sizeof(float);
-    return weights_sz;
-}
-
-size_t
-mlo_construct_direct2D::setOutputDescFromMLDesc(const miopen::TensorDescriptor& output_tensor)
-{
-
-    int nOut;
-    int cOut;
-    int hOut;
-    int wOut;
-    int nOutStride;
-    int cOutStride;
-    int hOutStride;
-    int wOutStride;
-
-    std::tie(nOut, cOut, hOut, wOut) = miopen::tien<4>(output_tensor.GetLengths());
-    std::tie(nOutStride, cOutStride, hOutStride, wOutStride) =
-        miopen::tien<4>(output_tensor.GetStrides());
-
-    setOutputDescr(
-        "NCHW", "FP32", nOut, cOut, hOut, wOut, nOutStride, cOutStride, hOutStride, wOutStride);
-
-    size_t output_sz = nOut * cOut * hOut * wOut * sizeof(float);
-    return output_sz;
-}
-
-size_t mlo_construct_direct2D::setInputDescFromMLDesc(const miopen::TensorDescriptor& input_tensor)
-{
-
-    int nIn;
-    int cIn;
-    int hIn;
-    int wIn;
-    int nInStride;
-    int cInStride;
-    int hInStride;
-    int wInStride;
-
-    std::tie(nIn, cIn, hIn, wIn) = miopen::tien<4>(input_tensor.GetLengths());
-    std::tie(nInStride, cInStride, hInStride, wInStride) =
-        miopen::tien<4>(input_tensor.GetStrides());
-
-    setInputDescr("NCHW", "FP32", nIn, cIn, hIn, wIn, nInStride, cInStride, hInStride, wInStride);
-
-    size_t input_sz = nIn * cIn * hIn * wIn * sizeof(float);
-
-    return input_sz;
 }

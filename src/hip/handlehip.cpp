@@ -30,6 +30,8 @@
 #include <miopen/kernel_cache.hpp>
 #include <miopen/binary_cache.hpp>
 #include <boost/filesystem.hpp>
+#include <miopen/handle_lock.hpp>
+#include <miopen/gemm_geometry.hpp>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -136,7 +138,8 @@ struct HandleImpl
 
     void elapsed_time(hipEvent_t start, hipEvent_t stop)
     {
-        hipEventElapsedTime(&this->profiling_result, start, stop);
+        if(enable_profiling)
+            hipEventElapsedTime(&this->profiling_result, start, stop);
     }
 
     std::function<void(hipEvent_t, hipEvent_t)> elapsed_time_handler()
@@ -149,7 +152,9 @@ struct HandleImpl
     {
         miopen::set_ctx(this->ctx);
         // miopen::set_device(this->device);
-        // TODO: Check device matches
+        // Check device matches
+        if(this->device != get_device_id())
+            MIOPEN_THROW("Running handle on wrong device");
     }
 
     bool enable_profiling  = false;
@@ -172,6 +177,10 @@ Handle::Handle(miopenAcceleratorQueue_t stream) : impl(new HandleImpl())
         this->impl->stream = HandleImpl::reference_stream(stream);
 
     this->SetAllocator(nullptr, nullptr, nullptr);
+
+#if MIOPEN_USE_ROCBLAS
+    rhandle = CreateRocblasHandle();
+#endif
 }
 
 Handle::Handle() : impl(new HandleImpl())
@@ -186,6 +195,10 @@ Handle::Handle() : impl(new HandleImpl())
     this->impl->stream = HandleImpl::reference_stream(nullptr);
 #endif
     this->SetAllocator(nullptr, nullptr, nullptr);
+
+#if MIOPEN_USE_ROCBLAS
+    rhandle = CreateRocblasHandle();
+#endif
 }
 
 Handle::~Handle() {}
@@ -213,12 +226,14 @@ float Handle::GetKernelTime() const { return this->impl->profiling_result; }
 
 Allocator::ManageDataPtr Handle::Create(std::size_t sz)
 {
+    MIOPEN_HANDLE_LOCK
     this->Finish();
     return this->impl->allocator(sz);
 }
 Allocator::ManageDataPtr&
 Handle::WriteTo(const void* data, Allocator::ManageDataPtr& ddata, std::size_t sz)
 {
+    MIOPEN_HANDLE_LOCK
     this->Finish();
     auto status = hipMemcpy(ddata.get(), data, sz, hipMemcpyHostToDevice);
     if(status != hipSuccess)
@@ -227,6 +242,7 @@ Handle::WriteTo(const void* data, Allocator::ManageDataPtr& ddata, std::size_t s
 }
 void Handle::ReadTo(void* data, const Allocator::ManageDataPtr& ddata, std::size_t sz)
 {
+    MIOPEN_HANDLE_LOCK
     this->Finish();
     auto status = hipMemcpy(data, ddata.get(), sz, hipMemcpyDeviceToHost);
     if(status != hipSuccess)
@@ -235,34 +251,48 @@ void Handle::ReadTo(void* data, const Allocator::ManageDataPtr& ddata, std::size
 
 void Handle::Copy(ConstData_t src, Data_t dest, std::size_t size)
 {
+    MIOPEN_HANDLE_LOCK
     this->impl->set_ctx();
     auto status = hipMemcpy(dest, src, size, hipMemcpyDeviceToDevice);
     if(status != hipSuccess)
         MIOPEN_THROW_HIP_STATUS(status, "Hip error copying buffer: ");
 }
 
-KernelInvoke Handle::GetKernel(const std::string& algorithm,
+KernelInvoke Handle::AddKernel(const std::string& algorithm,
                                const std::string& network_config,
                                const std::string& program_name,
                                const std::string& kernel_name,
                                const std::vector<size_t>& vld,
                                const std::vector<size_t>& vgd,
-                               const std::string& params)
+                               const std::string& params,
+                               std::size_t cache_index)
 {
-    this->impl->set_ctx();
-    auto k = this->impl->cache.GetKernel(
-        *this, algorithm, network_config, program_name, kernel_name, vld, vgd, params);
-    if(this->impl->enable_profiling)
-        return k.Invoke(this->GetStream(), this->impl->elapsed_time_handler());
-    else
-        return k.Invoke(this->GetStream());
+
+    auto obj = this->impl->cache.AddKernel(
+        *this, algorithm, network_config, program_name, kernel_name, vld, vgd, params, cache_index);
+    return this->Run(obj);
 }
 
-KernelInvoke Handle::GetKernel(const std::string& algorithm, const std::string& network_config)
+void Handle::ClearKernels(const std::string& algorithm, const std::string& network_config)
+{
+    this->impl->cache.ClearKernels(algorithm, network_config);
+}
+
+const std::vector<Kernel>& Handle::GetKernelsImpl(const std::string& algorithm,
+                                                  const std::string& network_config)
+{
+    return this->impl->cache.GetKernels(algorithm, network_config);
+}
+
+bool Handle::HasKernel(const std::string& algorithm, const std::string& network_config) const
+{
+    return this->impl->cache.HasKernels(algorithm, network_config);
+}
+
+KernelInvoke Handle::Run(Kernel k)
 {
     this->impl->set_ctx();
-    auto k = this->impl->cache.GetKernel(algorithm, network_config);
-    if(this->impl->enable_profiling)
+    if(this->impl->enable_profiling || MIOPEN_GPU_SYNC)
         return k.Invoke(this->GetStream(), this->impl->elapsed_time_handler());
     else
         return k.Invoke(this->GetStream());
@@ -364,4 +394,15 @@ shared<ConstData_t> Handle::CreateSubBuffer(ConstData_t data, std::size_t offset
     auto cdata = reinterpret_cast<const char*>(data);
     return {cdata + offset, null_deleter{}};
 }
+
+#if MIOPEN_USE_ROCBLAS
+rocblas_handle_ptr Handle::CreateRocblasHandle() const
+{
+    rocblas_handle x = nullptr;
+    rocblas_create_handle(&x);
+    auto result = rocblas_handle_ptr{x};
+    rocblas_set_stream(result.get(), GetStream());
+    return result;
+}
+#endif
 } // namespace miopen

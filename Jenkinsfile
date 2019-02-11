@@ -8,7 +8,7 @@ def rocmtestnode(variant, name, body) {
             rm -rf build
             mkdir build
             cd build
-            CXX=${compiler} CXXFLAGS='-Werror' cmake -DCMAKE_CXX_FLAGS_DEBUG='-g -fno-omit-frame-pointer -fsanitize=undefined -fno-sanitize-recover=undefined' ${flags} .. 
+            CXX=${compiler} CXXFLAGS='-Werror' cmake -DMIOPEN_GPU_SYNC=On -DCMAKE_CXX_FLAGS_DEBUG='-g -fno-omit-frame-pointer -fsanitize=undefined -fno-sanitize-recover=undefined' ${flags} .. 
             CTEST_PARALLEL_LEVEL=4 dumb-init make -j32 check doc MIOpenDriver
         """
         echo cmd
@@ -26,13 +26,18 @@ def rocmtestnode(variant, name, body) {
         stage("image ${variant}") {
             try {
                 docker.build("${image}", "--build-arg PREFIX=/usr/local .")
+                withDockerContainer(image: image, args: '--device=/dev/kfd --device=/dev/dri --group-add video') {
+                    sh 'PATH="/opt/rocm/opencl/bin/x86_64/:$PATH" clinfo'
+                }
             } catch(Exception ex) {
                 docker.build("${image}", "--build-arg PREFIX=/usr/local --no-cache .")
-
+                withDockerContainer(image: image, args: '--device=/dev/kfd --device=/dev/dri --group-add video') {
+                    sh 'PATH="/opt/rocm/opencl/bin/x86_64/:$PATH" clinfo'
+                }
             }
         }
         withDockerContainer(image: image, args: '--device=/dev/kfd --device=/dev/dri --group-add video') {
-            timeout(time: 1, unit: 'HOURS') {
+            timeout(time: 2, unit: 'HOURS') {
                 body(cmake_build)
             }
         }
@@ -72,7 +77,7 @@ def rocmnode(body) {
 }
 
 // Static checks
-rocmtest opencl_tidy: rocmnode('rocm') { cmake_build ->
+rocmtest opencl_tidy: rocmnode('rocmtest') { cmake_build ->
     stage('Clang Tidy') {
         sh '''
             rm -rf build
@@ -82,7 +87,7 @@ rocmtest opencl_tidy: rocmnode('rocm') { cmake_build ->
             make -j8 -k analyze
         '''
     }
-}, format: rocmnode('rocm') { cmake_build ->
+}, format: rocmnode('rocmtest') { cmake_build ->
     stage('Clang Format') {
         sh '''
             find . -iname \'*.h\' \
@@ -96,7 +101,7 @@ rocmtest opencl_tidy: rocmnode('rocm') { cmake_build ->
             | xargs -n 1 -P 1 -I{} -t sh -c \'clang-format-3.8 -style=file {} | diff - {}\'
         '''
     }
-}, hip_tidy: rocmnode('rocm') { cmake_build ->
+}, hip_tidy: rocmnode('rocmtest') { cmake_build ->
     stage('Hip Tidy') {
         sh '''
             rm -rf build
@@ -133,6 +138,17 @@ rocmtest opencl: rocmnode('vega') { cmake_build ->
     stage('Hip Release') {
         cmake_build('hcc', '-DBUILD_DEV=On -DCMAKE_BUILD_TYPE=release')
     }
+}, half_hip: rocmnode('vega') { cmake_build ->
+    stage('Half Hip Release') {
+        cmake_build('hcc', '-DMIOPEN_TEST_HALF=On -DBUILD_DEV=On -DCMAKE_BUILD_TYPE=release')
+    }
+}, half_opencl: rocmnode('vega') { cmake_build ->
+    stage('Half GCC Debug') {
+        cmake_build('g++-5', '-DMIOPEN_TEST_HALF=On -DBUILD_DEV=On -DCMAKE_BUILD_TYPE=debug')
+    }
+    stage('Half GCC Release') {
+        cmake_build('g++-5', '-DMIOPEN_TEST_HALF=On -DBUILD_DEV=On -DCMAKE_BUILD_TYPE=release')
+    }
 // }, windows: rocmnode('fiji') { cmake_build ->
 //     stage('Windows Release') {
 //         cmake_build('x86_64-w64-mingw32-g++', '-DBUILD_DEV=On -DCMAKE_TOOLCHAIN_FILE=/usr/local/x86_64-w64-mingw32/cmake/toolchain.cmake -DCMAKE_BUILD_TYPE=release')
@@ -147,5 +163,9 @@ rocmtest opencl_all: rocmnode('vega') { cmake_build ->
 }, hip_all: rocmnode('vega') { cmake_build ->
     stage('Hip Release All') {
         cmake_build('hcc', '-DBUILD_DEV=On -DMIOPEN_TEST_ALL=On -DCMAKE_BUILD_TYPE=release')
+    }
+}, half_hip_all: rocmnode('vega') { cmake_build ->
+    stage('Half Hip Release All') {
+        cmake_build('hcc', '-DMIOPEN_TEST_HALF=On -DBUILD_DEV=On -DMIOPEN_TEST_ALL=On -DCMAKE_BUILD_TYPE=release')
     }
 }

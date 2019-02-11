@@ -38,7 +38,7 @@ namespace miopen {
 float Im2ColGPU(Handle& handle,
                 int data_size,
                 ConstData_t im,
-                size_t im_offset,
+                int im_offset,
                 int c,
                 int h,
                 int w,
@@ -70,7 +70,36 @@ float Col2ImGPU(Handle& handle,
                 int h,
                 int w,
                 Data_t im,
-                size_t im_offset);
+                int im_offset);
+
+float transpose_NCHW2CNHW(Handle& handle,
+                          int n,
+                          int c,
+                          int h_in,
+                          int w_in,
+                          int h_out,
+                          int w_out,
+                          ConstData_t in,
+                          Data_t out,
+                          int in_offset,
+                          int out_offset,
+                          int h_stride,
+                          int w_stride);
+
+float transpose_CNHW2NCHW(Handle& handle,
+                          int n,
+                          int c,
+                          int h_out,
+                          int w_out,
+                          int h_in,
+                          int w_in,
+                          ConstData_t in,
+                          Data_t out,
+                          int in_offset,
+                          int out_offset,
+                          int h_stride,
+                          int w_stride);
 
 } // namespace miopen
+
 #endif // _MIOPEN_UTIL_HPP_
