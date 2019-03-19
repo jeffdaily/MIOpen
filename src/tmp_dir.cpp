@@ -7,7 +7,8 @@ namespace miopen {
 
 void SystemCmd(std::string cmd)
 {
-#ifndef NDEBUG
+//#ifndef NDEBUG
+#if 1
     MIOPEN_LOG_I(cmd);
 #endif
 // We shouldn't call system commands

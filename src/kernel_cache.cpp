@@ -188,7 +188,9 @@ Kernel KernelCache::AddKernel(Handle& h,
         program = h.LoadProgram(program_name, params, is_kernel_str);
         program_map[std::make_pair(program_name, params)] = program;
     }
+    MIOPEN_LOG_I2("Kernel constructor prior");
     Kernel kernel{program, kernel_name, vld, vgd};
+    MIOPEN_LOG_I2("Kernel constructor post");
     if(!network_config.empty() && !algorithm.empty())
     {
         this->AddKernel(key, kernel, cache_index);

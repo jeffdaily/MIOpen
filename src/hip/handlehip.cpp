@@ -29,7 +29,9 @@
 #include <miopen/handle.hpp>
 #include <miopen/kernel_cache.hpp>
 #include <miopen/binary_cache.hpp>
+#include <miopen/logger.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/interprocess/sync/named_mutex.hpp>
 #include <miopen/handle_lock.hpp>
 #include <miopen/gemm_geometry.hpp>
 
@@ -157,6 +159,16 @@ struct HandleImpl
             MIOPEN_THROW("Running handle on wrong device");
     }
 
+    void lock()
+    {
+        mtx.lock();
+    }
+
+    void unlock()
+    {
+        mtx.unlock();
+    }
+
     bool enable_profiling  = false;
     StreamPtr stream       = nullptr;
     float profiling_result = 0.0;
@@ -164,6 +176,7 @@ struct HandleImpl
     Allocator allocator{};
     KernelCache cache;
     hipCtx_t ctx;
+    boost::interprocess::named_mutex mtx{boost::interprocess::open_or_create, "miopen"};
 };
 
 Handle::Handle(miopenAcceleratorQueue_t stream) : impl(new HandleImpl())
@@ -302,21 +315,29 @@ Program Handle::LoadProgram(const std::string& program_name, std::string params,
 {
     this->impl->set_ctx();
     params += " -mcpu=" + this->GetDeviceName();
+    this->impl->lock();
     auto cache_file =
         miopen::LoadBinary(this->GetDeviceName(), program_name, params, is_kernel_str);
     if(cache_file.empty())
     {
+        MIOPEN_LOG_I2("cache file empty");
         auto p = HIPOCProgram{program_name, params, is_kernel_str};
 
         // Save to cache
         auto path = miopen::GetCachePath() / boost::filesystem::unique_path();
         boost::filesystem::copy_file(p.GetBinary(), path);
         miopen::SaveBinary(path, this->GetDeviceName(), program_name, params, is_kernel_str);
+#ifndef _WIN32
+        sync();
+#endif
 
+        this->impl->unlock();
         return p;
     }
     else
     {
+        MIOPEN_LOG_I2("cache file found: " + cache_file);
+        this->impl->unlock();
         return HIPOCProgram{program_name, cache_file};
     }
 }
